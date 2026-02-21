@@ -37,7 +37,7 @@ Press Enter. You're there.
 
 **One-liner:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/yourusername/dongle/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/jeremiahseun/dongle/main/install.sh | bash
 ```
 
 **Or via pip:**

@@ -33,9 +33,9 @@ dongle-scan  = "dongle.main:cmd_scan"
 dongle-list  = "dongle.main:cmd_list"
 
 [project.urls]
-Homepage   = "https://github.com/yourusername/dongle"
-Repository = "https://github.com/yourusername/dongle"
-Issues     = "https://github.com/yourusername/dongle/issues"
+Homepage   = "https://github.com/jeremiahseun/dongle"
+Repository = "https://github.com/jeremiahseun/dongle"
+Issues     = "https://github.com/jeremiahseun/dongle/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]

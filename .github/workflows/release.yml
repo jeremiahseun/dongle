@@ -1,0 +1,91 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: dongle-darwin-arm64
+          - os: macos-13
+            artifact: dongle-darwin-x64
+          - os: ubuntu-latest
+            artifact: dongle-linux-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install -e .
+
+      - name: Build standalone binary
+        run: |
+          pyinstaller \
+            --onefile \
+            --name ${{ matrix.artifact }} \
+            --add-data "dongle/shell:dongle/shell" \
+            --hidden-import prompt_toolkit \
+            --hidden-import pathspec \
+            dongle/main.py
+
+      - name: Build dongle-init binary
+        run: |
+          pyinstaller \
+            --onefile \
+            --name ${{ matrix.artifact }}-init \
+            --add-data "dongle/shell:dongle/shell" \
+            dongle/init_cmd.py
+
+      - name: Upload binary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/${{ matrix.artifact }}
+            dist/${{ matrix.artifact }}-init
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: binaries/
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          for dir in binaries/*/; do
+            cp "$dir"* release/ 2>/dev/null || true
+          done
+          chmod +x release/*
+          ls -la release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
