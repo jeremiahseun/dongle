@@ -34,9 +34,10 @@ __dongle_slash() {
 zle -N __dongle_widget
 zle -N __dongle_slash
 
-# Bind / on empty line, Ctrl+/ anywhere
+# Bind / on empty line, Ctrl+/ anywhere (+ Ctrl+O fallback for macOS)
 bindkey "/" __dongle_slash
-bindkey "^_" __dongle_widget   # Ctrl+/
+bindkey "^_" __dongle_widget   # Ctrl+/ (works on most Linux terminals)
+bindkey "^O" __dongle_widget   # Ctrl+O (reliable macOS alternative)
 bindkey "^]p" __dongle_widget  # Ctrl+] p fallback
 
 # Convenience shortcuts
@@ -63,4 +64,4 @@ dgws() {
 # Auto pre-scan the current directory in the background on shell load
 (dongle-scan &>/dev/null &)
 
-echo "  🔌 Dongle loaded. Press / on empty prompt, Ctrl+/ anywhere, or type 'dg'"
+echo "  🔌 Dongle loaded. Press / on empty prompt, Ctrl+O anywhere, or type 'dg'"

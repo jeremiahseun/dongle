@@ -4,9 +4,9 @@ Version: 0.1.0
 Summary: Fast, fuzzy directory navigation for any terminal
 Author: Dongle Contributors
 License: MIT
-Project-URL: Homepage, https://github.com/yourusername/dongle
-Project-URL: Repository, https://github.com/yourusername/dongle
-Project-URL: Issues, https://github.com/yourusername/dongle/issues
+Project-URL: Homepage, https://github.com/jeremiahseun/dongle
+Project-URL: Repository, https://github.com/jeremiahseun/dongle
+Project-URL: Issues, https://github.com/jeremiahseun/dongle/issues
 Keywords: terminal,navigation,cd,fuzzy,directory,shell
 Classifier: Development Status :: 3 - Alpha
 Classifier: Environment :: Console
@@ -19,7 +19,10 @@ Classifier: Topic :: Utilities
 Requires-Python: >=3.7
 Description-Content-Type: text/markdown
 Requires-Dist: prompt_toolkit>=3.0
+Requires-Dist: pathspec>=0.11.0
 Dynamic: requires-python
+
+<img width="256" height="200" alt="dongle" src="https://github.com/user-attachments/assets/c58d6923-0c32-4d6e-9897-8d422b321033" />
 
 # Dongle
 
@@ -46,22 +49,33 @@ Press Enter. You're there.
 
 - **Google-style live search** — results update as you type
 - **Fuzzy matching** — `src/comp` finds `src/components/Button`
-- **Any terminal** — works in bash, zsh, fish, and more
+- **Smart project root** — searches from the project root, not just `$PWD`. Deep inside `ios/`? You can still find `android/`
+- **Workspace search** — type `dgw` to search across all your projects instantly
+- **`.gitignore` aware** — automatically respects your `.gitignore` and `.dongleignore` files
+- **Any terminal** — works in Bash, Zsh, and Fish
 - **Fast** — scans and caches paths in milliseconds
-- **Not just for developers** — works anywhere you have files
-- **Zero config** — one install command, one line in your rc file
-- **Lightweight** — pure Python, one dependency (`prompt_toolkit`)
+- **Zero config** — one install command and you're done
 
 ---
 
 ## Install
 
-**One-liner:**
+### One-liner (recommended)
+
 ```bash
-curl -sSL https://raw.githubusercontent.com/yourusername/dongle/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/jeremiahseun/dongle/main/install.sh | bash
 ```
 
-**Or via pip:**
+The installer automatically:
+- Detects your OS (macOS / Linux) and architecture (ARM / x64)
+- Installs via `pip` if Python 3.10+ is available
+- Downloads a **standalone binary** from [GitHub Releases](https://github.com/jeremiahseun/dongle/releases) if Python is not installed
+- Adds Dongle to your shell config (`~/.zshrc`, `~/.bashrc`, or Fish config)
+
+> **No Python? No problem.** The installer handles everything automatically.
+
+### Or install manually via pip
+
 ```bash
 pip install dongle
 ```
@@ -81,6 +95,10 @@ dongle init fish | source
 
 Reload your shell and you're done.
 
+### Windows
+
+Dongle currently supports macOS and Linux. For Windows, install via [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) and follow the Linux instructions. Native Windows support is on the [roadmap](ROADMAP.md).
+
 ---
 
 ## Usage
@@ -89,8 +107,9 @@ Reload your shell and you're done.
 |--------|--------|
 | Press `/` on an empty prompt | Open directory search in current folder |
 | Press `Ctrl+/` anywhere | Open directory search (insert path at cursor) |
-| Type `ph` | Same as pressing / |
-| Type `phs` | Pre-scan and cache the current directory |
+| Type `dg` | Same as pressing / |
+| Type `dgw` | Open **Workspace Search** (search across multiple projects) |
+| Type `dgs` | Pre-scan and cache the current directory |
 | `dongle-pick ~/projects/myapp` | Search from a specific root |
 | `dongle-scan` | Warm the cache for current directory |
 
@@ -120,6 +139,7 @@ Reload your shell and you're done.
 Dongle works out of the box, but you can customize by setting environment variables:
 
 ```bash
+export DONGLE_WORKSPACES="~/Documents/GitHub,~/Projects" # Folders to search when using dgw
 export DONGLE_MAX_DEPTH=8       # how deep to scan (default: 6)
 export DONGLE_MAX_DIRS=10000    # max directories to index (default: 5000)
 export DONGLE_CACHE_TTL=600     # cache lifetime in seconds (default: 300)
@@ -150,12 +170,7 @@ Dongle is **not** trying to replace any of these — it's a focused tool for one
 
 ## Roadmap
 
-- [ ] Windows support (PowerShell / Windows Terminal)
-- [ ] Configurable skip list via `.dongleignore`
-- [ ] Preview pane (file count, last modified)
-- [ ] Bookmark frequently visited paths
-- [ ] Multi-root search
-- [ ] GUI launcher (optional)
+Dongle is continuously evolving. Check out [ROADMAP.md](ROADMAP.md) to see planned features like File Previews, Windows Support, and Action Menus!
 
 ---
 
@@ -164,7 +179,7 @@ Dongle is **not** trying to replace any of these — it's a focused tool for one
 Dongle is open source and welcomes contributions!
 
 ```bash
-git clone https://github.com/yourusername/dongle
+git clone https://github.com/jeremiahseun/dongle
 cd dongle
 pip install -e ".[dev]"
 ```
