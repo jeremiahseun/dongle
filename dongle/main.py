@@ -12,6 +12,10 @@ import time
 import threading
 import argparse
 from pathlib import Path
+try:
+    import pathspec
+except ImportError:
+    pathspec = None
 
 import asyncio
 import selectors
@@ -67,29 +71,110 @@ SKIP_DIRS = {
     ".vscode", "coverage", ".mypy_cache", ".pytest_cache",
 }
 
-def scan_paths(root: str, max_depth: int = 6, max_dirs: int = 5000) -> list[str]:
-    """Walk directory tree and collect all paths."""
+ROOT_MARKERS = {
+    ".git", ".svn", ".hg", "package.json", "pubspec.yaml", "pyproject.toml",
+    "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "Makefile"
+}
+
+def find_project_root(start_path: str) -> str:
+    """Walk upwards to find the root of the current project."""
+    current = os.path.abspath(start_path)
+    while True:
+        try:
+            entries = os.listdir(current)
+            if any(marker in entries for marker in ROOT_MARKERS):
+                return current
+        except PermissionError:
+            pass
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+    return os.path.abspath(start_path)
+
+def load_ignore_spec(root: str):
+    """Load .gitignore and .dongleignore into a pathspec."""
+    if pathspec is None:
+        return None
+
+    lines = []
+    for ignore_file in [".gitignore", ".dongleignore"]:
+        p = os.path.join(root, ignore_file)
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    lines.extend(f.readlines())
+            except Exception:
+                pass
+
+    if not lines:
+        return None
+
+    return pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, lines)
+
+
+def scan_paths(root: str, max_depth: int = 6, max_dirs: int = 15000, is_workspace: bool = False) -> list[str]:
+    """Walk directory tree and collect all paths.
+    If is_workspace is True, it quickly scans 2 levels deep across multiple root folders.
+    """
     root = os.path.abspath(root)
     paths = []
 
-    def walk(current: str, depth: int):
+    # In workspace mode, we might get a comma-separated list of roots
+    roots = []
+    if is_workspace:
+        ws_env = os.environ.get("DONGLE_WORKSPACES", "")
+        if ws_env:
+            roots = [os.path.abspath(os.path.expanduser(p.strip())) for p in ws_env.split(",") if p.strip()]
+
+    if not roots:
+        roots = [root]
+
+    spec = None
+    if not is_workspace:
+        spec = load_ignore_spec(root)
+
+    def walk(current: str, depth: int, current_root: str):
         if depth > max_depth or len(paths) >= max_dirs:
             return
         try:
             entries = os.scandir(current)
         except PermissionError:
             return
+
         for entry in entries:
             if not entry.is_dir(follow_symlinks=False):
                 continue
+
+            # Skip hidden and default bad dirs
             if entry.name in SKIP_DIRS or entry.name.startswith("."):
                 continue
-            rel = os.path.relpath(entry.path, root)
-            paths.append(rel)
-            walk(entry.path, depth + 1)
 
-    paths.append(".")
-    walk(root, 1)
+            rel = os.path.relpath(entry.path, current_root)
+
+            # Check pathspec
+            if spec and spec.match_file(rel + "/"):
+                continue
+
+            # In workspace mode, we prepend the root basename to distinguish projects
+            if is_workspace:
+                display_path = os.path.join(os.path.basename(current_root), rel)
+                # Store tuple of (display_path, absolute_path) for workspaces
+                paths.append((display_path, entry.path))
+            else:
+                paths.append(rel)
+
+            walk(entry.path, depth + 1, current_root)
+
+    if not is_workspace:
+        paths.append(".")
+
+    for r in roots:
+        if os.path.exists(r):
+            # Limit depth heavily for workspace mode to avoid crawling the whole user disk
+            scan_depth = 3 if is_workspace else max_depth
+            walk(r, 1, r)
+
     return paths
 
 
@@ -114,16 +199,18 @@ def save_cache(root: str, paths: list[str]):
         pass
 
 
-def get_paths(root: str) -> list[str]:
-    cached = load_cache(root)
+def get_paths(root: str, is_workspace: bool = False) -> list:
+    # Use a different cache key for workspace mode
+    cache_key = "WORKSPACE:" + root if is_workspace else root
+    cached = load_cache(cache_key)
     if cached is not None:
         return cached
 
     sys.stderr.write("\r\033[K  \033[36m⠋\033[0m Scanning directories... ")
     sys.stderr.flush()
 
-    paths = scan_paths(root)
-    save_cache(root, paths)
+    paths = scan_paths(root, is_workspace=is_workspace)
+    save_cache(cache_key, paths)
 
     sys.stderr.write("\r\033[K")
     sys.stderr.flush()
@@ -166,10 +253,17 @@ def fuzzy_score(query: str, path: str) -> int:
 def search(query: str, paths: list[str], limit: int = 12) -> list[tuple[int, str]]:
     """Return scored, sorted results."""
     results = []
-    for p in paths:
-        s = fuzzy_score(query, p)
+    for r in paths:
+        # Check if r is a tuple from workspace mode (display_path, absolute_path)
+        if isinstance(r, tuple):
+            display_path, abs_path = r
+            search_str = display_path
+        else:
+            search_str = r
+
+        s = fuzzy_score(query, search_str)
         if s > 0:
-            results.append((s, p))
+            results.append((s, r))
     results.sort(key=lambda x: -x[0])
     return results[:limit]
 
@@ -181,7 +275,8 @@ def search(query: str, paths: list[str], limit: int = 12) -> list[tuple[int, str
 def run_picker(root: str, paths: list[str]) -> Optional[str]:
     """Show interactive search UI. Returns selected path or None."""
     selected = [None]
-    results = [paths[:12]]
+    max_results = 8
+    results = [paths[:max_results]]
     cursor = [0]
 
     kb = KeyBindings()
@@ -226,10 +321,10 @@ def run_picker(root: str, paths: list[str]) -> Optional[str]:
 
     def refresh_results(text):
         if text:
-            scored = search(text, paths)
+            scored = search(text, paths, limit=max_results)
             results[0] = [p for _, p in scored]
         else:
-            results[0] = paths[:12]
+            results[0] = paths[:max_results]
         cursor[0] = min(cursor[0], max(0, len(results[0]) - 1))
         result_control.text = render_results
 
@@ -239,8 +334,15 @@ def run_picker(root: str, paths: list[str]) -> Optional[str]:
 
     def render_results():
         lines = []
-        for i, path in enumerate(results[0]):
+        for i, item in enumerate(results[0]):
             is_selected = i == cursor[0]
+
+            # Extract paths correctly depending on workspace mode tuple
+            if isinstance(item, tuple):
+                path, _ = item
+            else:
+                path = item
+
             parts = path.split(os.sep)
             # highlight last segment
             if len(parts) > 1:
@@ -259,6 +361,14 @@ def run_picker(root: str, paths: list[str]) -> Optional[str]:
 
         if not results[0]:
             lines.append(("class:no-results", "  No results found\n"))
+            drawn = 1
+        else:
+            drawn = len(results[0])
+
+        # Pad so the window NEVER shrinks/jumps — always exactly max_results lines
+        for _ in range(max_results - drawn):
+            lines.append(("", "\n"))
+
         return lines
 
     search_buf = Buffer(name="search", on_text_changed=lambda buf: on_text_change(buf))
@@ -276,12 +386,13 @@ def run_picker(root: str, paths: list[str]) -> Optional[str]:
     layout = Layout(
         HSplit([
             Window(content=header, height=2),
+            Window(height=1, char=" "),  # padding between header and search
             VSplit([
                 Window(content=search_prompt, width=4, height=1),
                 Window(content=BufferControl(buffer=search_buf), height=1),
             ]),
             Window(height=1, char="─", style="class:divider"),
-            Window(content=result_control, height=14),
+            Window(content=result_control, height=max_results + 1, wrap_lines=False),
         ])
     )
 
@@ -340,24 +451,34 @@ def run_picker(root: str, paths: list[str]) -> Optional[str]:
 def cmd_pick():
     """Interactive picker — prints chosen path to stdout."""
     parser = argparse.ArgumentParser(description="Dongle interactive picker")
-    parser.add_argument("root", nargs="?", default=os.getcwd(), help="Root directory to search")
+    parser.add_argument("root", nargs="?", default=None, help="Root directory to search")
     parser.add_argument("--rescan", action="store_true", help="Force rescan ignoring cache")
+    parser.add_argument("--workspace", action="store_true", help="Search across all workspaces")
     args = parser.parse_args()
 
-    root = os.path.abspath(args.root)
+    # If no explicit root given, try to find the project root upwards!
+    if args.root is None:
+        root = find_project_root(os.getcwd())
+    else:
+        root = os.path.abspath(args.root)
 
-    if args.rescan and CACHE_FILE.exists():
-        CACHE_FILE.unlink()
+    cache_file = CACHE_FILE if not args.workspace else Path.home() / ".dongle_workspace_cache.json"
+    if args.rescan and cache_file.exists():
+        cache_file.unlink()
 
     # Background scan indicator
     sys.stderr.write("\033[?25l")  # hide cursor briefly
-    paths = get_paths(root)
+    paths = get_paths(root, is_workspace=args.workspace)
     sys.stderr.write("\033[?25h")  # restore cursor
 
     chosen = run_picker(root, paths)
     if chosen:
-        full = os.path.join(root, chosen) if chosen != "." else root
-        print(full)
+        # If workspace mode, chosen is a tuple (display_path, absolute_path)
+        if isinstance(chosen, tuple):
+            print(chosen[1])
+        else:
+            full = os.path.join(root, chosen) if chosen != "." else root
+            print(full)
     else:
         sys.exit(1)
 
@@ -365,16 +486,23 @@ def cmd_pick():
 def cmd_scan():
     """Pre-scan and cache paths for a directory."""
     parser = argparse.ArgumentParser(description="Dongle scanner")
-    parser.add_argument("root", nargs="?", default=os.getcwd())
+    parser.add_argument("root", nargs="?", default=None)
+    parser.add_argument("--workspace", action="store_true", help="Scan across all workspaces")
     args = parser.parse_args()
 
-    root = os.path.abspath(args.root)
-    if CACHE_FILE.exists():
-        CACHE_FILE.unlink()
+    if args.root is None:
+        root = find_project_root(os.getcwd())
+    else:
+        root = os.path.abspath(args.root)
 
-    sys.stderr.write(f"Scanning {root}...\n")
-    paths = scan_paths(root)
-    save_cache(root, paths)
+    cache_file = CACHE_FILE if not args.workspace else Path.home() / ".dongle_workspace_cache.json"
+    if cache_file.exists():
+        cache_file.unlink()
+
+    sys.stderr.write(f"Scanning {'workspaces' if args.workspace else root}...\n")
+    paths = scan_paths(root, is_workspace=args.workspace)
+    cache_key = "WORKSPACE:" + root if args.workspace else root
+    save_cache(cache_key, paths)
     sys.stderr.write(f"Cached {len(paths)} paths\n")
 
 

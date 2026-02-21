@@ -42,6 +42,15 @@ function dgs
     dongle-scan $argv
 end
 
+function dgw
+    set chosen (dongle-pick --workspace </dev/tty 2>/dev/tty)
+    and cd $chosen
+end
+
+function dgws
+    dongle-scan --workspace $argv
+end
+
 # Auto pre-scan the current directory in the background
 dongle-scan &>/dev/null &
 

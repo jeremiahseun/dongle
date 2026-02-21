@@ -23,6 +23,7 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "prompt_toolkit>=3.0",
+    "pathspec>=0.11.0",
 ]
 
 [project.scripts]

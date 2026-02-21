@@ -50,6 +50,16 @@ dgs() {
     dongle-scan "$@"
 }
 
+dgw() {
+    local chosen
+    chosen="$(dongle-pick --workspace </dev/tty 2>/dev/tty)"
+    [ $? -eq 0 ] && [ -n "$chosen" ] && cd "$chosen"
+}
+
+dgws() {
+    dongle-scan --workspace "$@"
+}
+
 # Auto pre-scan the current directory in the background on shell load
 (dongle-scan &>/dev/null &)
 

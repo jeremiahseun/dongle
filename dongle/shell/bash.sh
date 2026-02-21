@@ -48,6 +48,8 @@ bind -x '"":__dongle_widget'   # Ctrl+/
 # Convenience shortcuts
 alias dg='cd "$(dongle-pick)" && echo "  → $(pwd | sed "s|$HOME|~|")"'
 alias dgs='dongle-scan'
+alias dgw='cd "$(dongle-pick --workspace </dev/tty 2>/dev/tty)" && echo "  → $(pwd | sed "s|$HOME|~|")"'
+alias dgws='dongle-scan --workspace'
 
 # Tab completion for dongle command
 _dongle_complete() {

@@ -1,4 +1,4 @@
-# Dongle
+# <img src="assets/images/logo.png" width="40" height="40" align="top"> Dongle
 
 > **Fast, fuzzy directory navigation — for any terminal, any user.**
 
@@ -58,6 +58,8 @@ dongle init fish | source
 
 Reload your shell and you're done.
 
+> **Note on Standalone Binaries:** We are currently migrating to fully standalone executables. Soon you will not even need Python installed to use Dongle!
+
 ---
 
 ## Usage
@@ -67,6 +69,7 @@ Reload your shell and you're done.
 | Press `/` on an empty prompt | Open directory search in current folder |
 | Press `Ctrl+/` anywhere | Open directory search (insert path at cursor) |
 | Type `dg` | Same as pressing / |
+| Type `dgw` | Open **Workspace Search** (search across multiple projects) |
 | Type `dgs` | Pre-scan and cache the current directory |
 | `dongle-pick ~/projects/myapp` | Search from a specific root |
 | `dongle-scan` | Warm the cache for current directory |
@@ -97,6 +100,7 @@ Reload your shell and you're done.
 Dongle works out of the box, but you can customize by setting environment variables:
 
 ```bash
+export DONGLE_WORKSPACES="~/Documents/GitHub,~/Projects" # Folders to search when using dgw
 export DONGLE_MAX_DEPTH=8       # how deep to scan (default: 6)
 export DONGLE_MAX_DIRS=10000    # max directories to index (default: 5000)
 export DONGLE_CACHE_TTL=600     # cache lifetime in seconds (default: 300)
@@ -127,12 +131,7 @@ Dongle is **not** trying to replace any of these — it's a focused tool for one
 
 ## Roadmap
 
-- [ ] Windows support (PowerShell / Windows Terminal)
-- [ ] Configurable skip list via `.dongleignore`
-- [ ] Preview pane (file count, last modified)
-- [ ] Bookmark frequently visited paths
-- [ ] Multi-root search
-- [ ] GUI launcher (optional)
+Dongle is continuously evolving. Check out [ROADMAP.md](ROADMAP.md) to see planned features like File Previews, Windows Support, and Action Menus!
 
 ---
 
