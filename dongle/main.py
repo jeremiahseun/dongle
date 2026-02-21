@@ -272,11 +272,14 @@ def search(query: str, paths: list[str], limit: int = 12) -> list[tuple[int, str
 # TUI Application
 # ──────────────────────────────────────────────
 
-def run_picker(root: str, paths: list[str]) -> Optional[str]:
+def run_picker(root: str, paths: Optional[list[str]], is_workspace: bool = False) -> Optional[str]:
     """Show interactive search UI. Returns selected path or None."""
+    is_scanning = [paths is None]
+    paths = paths or []
+
     selected = [None]
     max_results = 8
-    results = [paths[:max_results]]
+    results = [paths[:max_results] if paths else []]
     cursor = [0]
 
     kb = KeyBindings()
@@ -360,7 +363,10 @@ def run_picker(root: str, paths: list[str]) -> Optional[str]:
                 lines.append(("class:path-name", f"{last}\n"))
 
         if not results[0]:
-            lines.append(("class:no-results", "  No results found\n"))
+            if is_scanning[0]:
+                lines.append(("class:no-results", f"  Scanning {root} ...\n"))
+            else:
+                lines.append(("class:no-results", "  No results found\n"))
             drawn = 1
         else:
             drawn = len(results[0])
@@ -370,6 +376,27 @@ def run_picker(root: str, paths: list[str]) -> Optional[str]:
             lines.append(("", "\n"))
 
         return lines
+
+    import asyncio
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.get_event_loop()
+
+    def bg_scan():
+        cache_key = "WORKSPACE:" + root if is_workspace else root
+        new_paths = scan_paths(root, is_workspace=is_workspace)
+        save_cache(cache_key, new_paths)
+        paths.clear()
+        paths.extend(new_paths)
+        is_scanning[0] = False
+
+        # Thread-safe UI update
+        def update_ui():
+            refresh_results(search_buf.text)
+            app.invalidate()
+
+        loop.call_soon_threadsafe(update_ui)
 
     search_buf = Buffer(name="search", on_text_changed=lambda buf: on_text_change(buf))
     result_control = FormattedTextControl(text=render_results, focusable=False)
@@ -434,6 +461,9 @@ def run_picker(root: str, paths: list[str]) -> Optional[str]:
         output=tty_output,
     )
 
+    if is_scanning[0]:
+        threading.Thread(target=bg_scan, daemon=True).start()
+
     try:
         app.run()
     finally:
@@ -462,16 +492,13 @@ def cmd_pick():
     else:
         root = os.path.abspath(args.root)
 
-    cache_file = CACHE_FILE if not args.workspace else Path.home() / ".dongle_workspace_cache.json"
-    if args.rescan and cache_file.exists():
-        cache_file.unlink()
+    cache_key = "WORKSPACE:" + root if args.workspace else root
+    if args.rescan:
+        paths = None
+    else:
+        paths = load_cache(cache_key)
 
-    # Background scan indicator
-    sys.stderr.write("\033[?25l")  # hide cursor briefly
-    paths = get_paths(root, is_workspace=args.workspace)
-    sys.stderr.write("\033[?25h")  # restore cursor
-
-    chosen = run_picker(root, paths)
+    chosen = run_picker(root, paths, is_workspace=args.workspace)
     if chosen:
         # If workspace mode, chosen is a tuple (display_path, absolute_path)
         if isinstance(chosen, tuple):

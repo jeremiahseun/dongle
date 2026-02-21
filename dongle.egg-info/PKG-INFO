@@ -106,7 +106,7 @@ Dongle currently supports macOS and Linux. For Windows, install via [WSL](https:
 | Action | Result |
 |--------|--------|
 | Press `/` on an empty prompt | Open directory search in current folder |
-| Press `Ctrl+/` anywhere | Open directory search (insert path at cursor) |
+| Press `Ctrl+O` anywhere | Open directory search (insert path at cursor) |
 | Type `dg` | Same as pressing / |
 | Type `dgw` | Open **Workspace Search** (search across multiple projects) |
 | Type `dgs` | Pre-scan and cache the current directory |
