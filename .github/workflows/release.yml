@@ -15,7 +15,7 @@ jobs:
         include:
           - os: macos-latest
             artifact: dongle-darwin-arm64
-          - os: macos-13
+          - os: macos-14
             artifact: dongle-darwin-x64
           - os: ubuntu-latest
             artifact: dongle-linux-x64

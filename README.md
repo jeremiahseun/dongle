@@ -25,22 +25,33 @@ Press Enter. You're there.
 
 - **Google-style live search** — results update as you type
 - **Fuzzy matching** — `src/comp` finds `src/components/Button`
-- **Any terminal** — works in bash, zsh, fish, and more
+- **Smart project root** — searches from the project root, not just `$PWD`. Deep inside `ios/`? You can still find `android/`
+- **Workspace search** — type `dgw` to search across all your projects instantly
+- **`.gitignore` aware** — automatically respects your `.gitignore` and `.dongleignore` files
+- **Any terminal** — works in Bash, Zsh, and Fish
 - **Fast** — scans and caches paths in milliseconds
-- **Not just for developers** — works anywhere you have files
-- **Zero config** — one install command, one line in your rc file
-- **Lightweight** — pure Python, one dependency (`prompt_toolkit`)
+- **Zero config** — one install command and you're done
 
 ---
 
 ## Install
 
-**One-liner:**
+### One-liner (recommended)
+
 ```bash
 curl -sSL https://raw.githubusercontent.com/jeremiahseun/dongle/main/install.sh | bash
 ```
 
-**Or via pip:**
+The installer automatically:
+- Detects your OS (macOS / Linux) and architecture (ARM / x64)
+- Installs via `pip` if Python 3.10+ is available
+- Downloads a **standalone binary** from [GitHub Releases](https://github.com/jeremiahseun/dongle/releases) if Python is not installed
+- Adds Dongle to your shell config (`~/.zshrc`, `~/.bashrc`, or Fish config)
+
+> **No Python? No problem.** The installer handles everything automatically.
+
+### Or install manually via pip
+
 ```bash
 pip install dongle
 ```
@@ -60,7 +71,9 @@ dongle init fish | source
 
 Reload your shell and you're done.
 
-> **Note on Standalone Binaries:** We are currently migrating to fully standalone executables. Soon you will not even need Python installed to use Dongle!
+### Windows
+
+Dongle currently supports macOS and Linux. For Windows, install via [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) and follow the Linux instructions. Native Windows support is on the [roadmap](ROADMAP.md).
 
 ---
 
@@ -142,7 +155,7 @@ Dongle is continuously evolving. Check out [ROADMAP.md](ROADMAP.md) to see plann
 Dongle is open source and welcomes contributions!
 
 ```bash
-git clone https://github.com/yourusername/dongle
+git clone https://github.com/jeremiahseun/dongle
 cd dongle
 pip install -e ".[dev]"
 ```
