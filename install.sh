@@ -117,34 +117,35 @@ install_via_binary() {
 
     ok "Latest release: ${latest_tag}"
 
-    local binary_name="dongle-${PLATFORM}"
-    local init_binary_name="dongle-${PLATFORM}-init"
+    local tar_name="dongle-${PLATFORM}.tar.gz"
     local base_url="https://github.com/${REPO}/releases/download/${latest_tag}"
 
     # Create install directory
     mkdir -p "$INSTALL_DIR"
+    cd "$INSTALL_DIR" || error "Failed to cd to $INSTALL_DIR"
 
-    # Download main binary
-    log "Downloading ${binary_name}..."
-    if ! curl -sSL -o "${INSTALL_DIR}/dongle-pick" "${base_url}/${binary_name}"; then
-        error "Failed to download binary. Check your internet connection."
+    # Download tarball
+    log "Downloading ${tar_name}..."
+    if ! curl -sSL -o "${tar_name}" "${base_url}/${tar_name}"; then
+        error "Failed to download release bundle. Check your internet connection."
     fi
-    chmod +x "${INSTALL_DIR}/dongle-pick"
-    ok "Downloaded dongle-pick"
 
-    # Download init binary
-    log "Downloading ${init_binary_name}..."
-    if ! curl -sSL -o "${INSTALL_DIR}/dongle" "${base_url}/${init_binary_name}"; then
-        error "Failed to download init binary."
+    log "Extracting ${tar_name}..."
+    tar -xzf "${tar_name}" || error "Extraction failed."
+    rm -f "${tar_name}"
+
+    local bundle_dir="dongle-${PLATFORM}"
+    if [ ! -d "$bundle_dir" ]; then
+        error "Extraction succeeded but bundle directory ($bundle_dir) not found."
     fi
-    chmod +x "${INSTALL_DIR}/dongle"
-    ok "Downloaded dongle"
 
-    # Create convenience symlinks
-    ln -sf "${INSTALL_DIR}/dongle-pick" "${INSTALL_DIR}/dongle-scan"
-    ln -sf "${INSTALL_DIR}/dongle-pick" "${INSTALL_DIR}/dongle-list"
+    # Create root level symlinks pointing into the extracted bundle
+    ln -sf "${INSTALL_DIR}/${bundle_dir}/dongle-pick" "${INSTALL_DIR}/dongle-pick"
+    ln -sf "${INSTALL_DIR}/${bundle_dir}/dongle-scan" "${INSTALL_DIR}/dongle-scan"
+    ln -sf "${INSTALL_DIR}/${bundle_dir}/dongle-list" "${INSTALL_DIR}/dongle-list"
+    ln -sf "${INSTALL_DIR}/${bundle_dir}/dongle" "${INSTALL_DIR}/dongle"
 
-    ok "Binaries installed to ${INSTALL_DIR}"
+    ok "Binaries installed and linked to ${INSTALL_DIR}"
 
     # Add to PATH
     add_to_path "$INSTALL_DIR"

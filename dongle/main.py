@@ -90,6 +90,14 @@ def find_project_root(start_path: str) -> str:
         if parent == current:
             break
         current = parent
+
+    # If no project root found, check if user explicitly constrained search scope
+    search_dir = os.environ.get("DONGLE_SEARCH_DIR")
+    if search_dir:
+        expanded = os.path.expanduser(search_dir)
+        if os.path.isdir(expanded):
+            return expanded
+
     return os.path.abspath(start_path)
 
 def load_ignore_spec(root: str):
@@ -117,6 +125,11 @@ def scan_paths(root: str, max_depth: int = 6, max_dirs: int = 15000, is_workspac
     """Walk directory tree and collect all paths.
     If is_workspace is True, it quickly scans 2 levels deep across multiple root folders.
     """
+    if not is_workspace and max_depth == 6:
+        home = os.path.expanduser("~")
+        if os.path.abspath(root) in (home, "/"):
+            max_depth = 2
+
     root = os.path.abspath(root)
     paths = []
 

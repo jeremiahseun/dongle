@@ -35,31 +35,42 @@ jobs:
           pip install pyinstaller
           pip install -e .
 
-      - name: Build standalone binary
+      - name: Build standalone binaries
         run: |
           pyinstaller \
-            --onefile \
-            --name ${{ matrix.artifact }} \
+            --noconfirm \
+            --name ${{ matrix.artifact }}-pick \
             --add-data "dongle/shell:dongle/shell" \
             --hidden-import prompt_toolkit \
             --hidden-import pathspec \
             dongle/main.py
 
-      - name: Build dongle-init binary
-        run: |
           pyinstaller \
-            --onefile \
-            --name ${{ matrix.artifact }}-init \
+            --noconfirm \
+            --name dongle \
             --add-data "dongle/shell:dongle/shell" \
             dongle/init_cmd.py
+
+      - name: Create release bundle
+        run: |
+          mkdir -p release_pack/${{ matrix.artifact }}
+          # Copy the compiled folders into our pack directory
+          cp -r dist/${{ matrix.artifact }}-pick/* release_pack/${{ matrix.artifact }}/
+          cp -r dist/dongle/* release_pack/${{ matrix.artifact }}/
+
+          # Create convenience copies of the pick executable
+          cp release_pack/${{ matrix.artifact }}/${{ matrix.artifact }}-pick release_pack/${{ matrix.artifact }}/dongle-pick
+          cp release_pack/${{ matrix.artifact }}/${{ matrix.artifact }}-pick release_pack/${{ matrix.artifact }}/dongle-scan
+          cp release_pack/${{ matrix.artifact }}/${{ matrix.artifact }}-pick release_pack/${{ matrix.artifact }}/dongle-list
+
+          # Tar it up
+          cd release_pack && tar -czf ../${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
 
       - name: Upload binary artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: |
-            dist/${{ matrix.artifact }}
-            dist/${{ matrix.artifact }}-init
+          path: ${{ matrix.artifact }}.tar.gz
 
   release:
     needs: build

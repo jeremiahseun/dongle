@@ -116,6 +116,7 @@ Dongle works out of the box, but you can customize by setting environment variab
 
 ```bash
 export DONGLE_WORKSPACES="~/Documents/GitHub,~/Projects" # Folders to search when using dgw
+export DONGLE_SEARCH_DIR="~/Projects"           # Fallback folder when using dg outside a project
 export DONGLE_MAX_DEPTH=8       # how deep to scan (default: 6)
 export DONGLE_MAX_DIRS=10000    # max directories to index (default: 5000)
 export DONGLE_CACHE_TTL=600     # cache lifetime in seconds (default: 300)
