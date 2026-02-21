@@ -211,8 +211,8 @@ add_shell_integration() {
     esac
 
     # Only add if not already present
-    if [ -f "$rc_file" ] && grep -qF "dongle" "$rc_file"; then
-        warn "Dongle already in $rc_file, skipping"
+    if [ -f "$rc_file" ] && grep -qF "dongle init" "$rc_file"; then
+        warn "Dongle init already in $rc_file, skipping"
     else
         echo "" >> "$rc_file"
         echo "# Dongle — fast fuzzy directory navigation" >> "$rc_file"
