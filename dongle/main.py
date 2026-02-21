@@ -293,7 +293,7 @@ def search(query: str, paths: list[str], limit: int = 12, root: str = "", cwd: s
     results.sort(key=lambda x: -x[0])
     return results[:limit]
 
-VERSION = "0.2.4"
+VERSION = "0.2.7"
 
 def check_for_updates():
     """Check GitHub for a newer release. Returns True if update available."""
