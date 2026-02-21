@@ -21,6 +21,10 @@ Press Enter. You're there.
 
 ---
 
+## Demo
+
+https://github.com/user-attachments/assets/6460e432-f732-4d4b-8324-1308ee36460c
+
 ## Features
 
 - **Google-style live search** — results update as you type
