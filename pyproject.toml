@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dongle"
+version = "0.1.0"
+description = "Fast, fuzzy directory navigation for any terminal"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Dongle Contributors" }]
+keywords = ["terminal", "navigation", "cd", "fuzzy", "directory", "shell"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Shells",
+    "Topic :: Utilities",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "prompt_toolkit>=3.0",
+]
+
+[project.scripts]
+dongle       = "dongle.init_cmd:main"
+dongle-pick  = "dongle.main:cmd_pick"
+dongle-scan  = "dongle.main:cmd_scan"
+dongle-list  = "dongle.main:cmd_list"
+
+[project.urls]
+Homepage   = "https://github.com/yourusername/dongle"
+Repository = "https://github.com/yourusername/dongle"
+Issues     = "https://github.com/yourusername/dongle/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dongle*"]
+
+[tool.setuptools.package-data]
+dongle = ["shell/*"]

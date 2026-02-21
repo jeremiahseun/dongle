@@ -1,0 +1,16 @@
+MANIFEST.in
+README.md
+pyproject.toml
+setup.py
+dongle/__init__.py
+dongle/init_cmd.py
+dongle/main.py
+dongle.egg-info/PKG-INFO
+dongle.egg-info/SOURCES.txt
+dongle.egg-info/dependency_links.txt
+dongle.egg-info/entry_points.txt
+dongle.egg-info/requires.txt
+dongle.egg-info/top_level.txt
+dongle/shell/bash.sh
+dongle/shell/fish.fish
+dongle/shell/zsh.sh

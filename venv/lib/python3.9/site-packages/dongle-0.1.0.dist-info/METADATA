@@ -1,0 +1,178 @@
+Metadata-Version: 2.4
+Name: dongle
+Version: 0.1.0
+Summary: Fast, fuzzy directory navigation for any terminal
+Author: Dongle Contributors
+License: MIT
+Project-URL: Homepage, https://github.com/yourusername/dongle
+Project-URL: Repository, https://github.com/yourusername/dongle
+Project-URL: Issues, https://github.com/yourusername/dongle/issues
+Keywords: terminal,navigation,cd,fuzzy,directory,shell
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Console
+Classifier: Intended Audience :: End Users/Desktop
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: POSIX
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: System :: Shells
+Classifier: Topic :: Utilities
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+Requires-Dist: prompt_toolkit>=3.0
+Dynamic: requires-python
+
+# Dongle
+
+> **Fast, fuzzy directory navigation — for any terminal, any user.**
+
+No more `cd ../../some/deep/nested/folder`. Just press `/` and search.
+
+```
+  Dongle  in ~/my-project
+  / src comp                          ← you type this
+  ──────────────────────────────────
+  ❯ src/components/ui                 ← highlighted selection
+    src/components/auth
+    src/components/dashboard
+    src/components/forms/inputs
+    tests/components
+```
+
+Press Enter. You're there.
+
+---
+
+## Features
+
+- **Google-style live search** — results update as you type
+- **Fuzzy matching** — `src/comp` finds `src/components/Button`
+- **Any terminal** — works in bash, zsh, fish, and more
+- **Fast** — scans and caches paths in milliseconds
+- **Not just for developers** — works anywhere you have files
+- **Zero config** — one install command, one line in your rc file
+- **Lightweight** — pure Python, one dependency (`prompt_toolkit`)
+
+---
+
+## Install
+
+**One-liner:**
+```bash
+curl -sSL https://raw.githubusercontent.com/yourusername/dongle/main/install.sh | bash
+```
+
+**Or via pip:**
+```bash
+pip install dongle
+```
+
+Then add to your shell config:
+
+```bash
+# Bash (~/.bashrc)
+eval "$(dongle init bash)"
+
+# Zsh (~/.zshrc)
+eval "$(dongle init zsh)"
+
+# Fish (~/.config/fish/config.fish)
+dongle init fish | source
+```
+
+Reload your shell and you're done.
+
+---
+
+## Usage
+
+| Action | Result |
+|--------|--------|
+| Press `/` on an empty prompt | Open directory search in current folder |
+| Press `Ctrl+/` anywhere | Open directory search (insert path at cursor) |
+| Type `ph` | Same as pressing / |
+| Type `phs` | Pre-scan and cache the current directory |
+| `dongle-pick ~/projects/myapp` | Search from a specific root |
+| `dongle-scan` | Warm the cache for current directory |
+
+### Navigation inside the picker
+
+| Key | Action |
+|-----|--------|
+| Type | Filter results live |
+| `↑` / `↓` or `Ctrl+P` / `Ctrl+N` | Move selection |
+| `Tab` / `Shift+Tab` | Move selection |
+| `Enter` | Navigate to selected path |
+| `Esc` or `Ctrl+C` | Cancel |
+
+---
+
+## How it works
+
+1. **On activation**, Dongle quickly walks your current directory tree (skipping `node_modules`, `.git`, build artifacts, etc.)
+2. **Paths are cached** for 5 minutes so repeated searches are instant
+3. **Fuzzy search** scores results by how well they match — exact substrings rank highest, then character sequence matches
+4. **The shell integration** handles the actual `cd` so Dongle works with any shell that supports keybindings
+
+---
+
+## Configuration
+
+Dongle works out of the box, but you can customize by setting environment variables:
+
+```bash
+export DONGLE_MAX_DEPTH=8       # how deep to scan (default: 6)
+export DONGLE_MAX_DIRS=10000    # max directories to index (default: 5000)
+export DONGLE_CACHE_TTL=600     # cache lifetime in seconds (default: 300)
+export DONGLE_SKIP_DIRS="dist,build,tmp"  # extra dirs to skip
+```
+
+---
+
+## Skipped directories
+
+By default, Dongle skips:
+`.git`, `node_modules`, `__pycache__`, `dist`, `build`, `.next`, `.nuxt`, `venv`, `.venv`, `target`, `vendor`, `.idea`, `.vscode`, and other common noise directories.
+
+---
+
+## Why Dongle?
+
+| Tool | What it does |
+|------|-------------|
+| `cd` | Manual path typing — tedious for deep trees |
+| `autojump` / `zoxide` | Learns from history — great but needs training |
+| `fzf` | General fuzzy finder — powerful but requires setup |
+| **Dongle** | Instant visual search from your current root — no training needed |
+
+Dongle is **not** trying to replace any of these — it's a focused tool for one thing: getting to a path within a project quickly and visually.
+
+---
+
+## Roadmap
+
+- [ ] Windows support (PowerShell / Windows Terminal)
+- [ ] Configurable skip list via `.dongleignore`
+- [ ] Preview pane (file count, last modified)
+- [ ] Bookmark frequently visited paths
+- [ ] Multi-root search
+- [ ] GUI launcher (optional)
+
+---
+
+## Contributing
+
+Dongle is open source and welcomes contributions!
+
+```bash
+git clone https://github.com/yourusername/dongle
+cd dongle
+pip install -e ".[dev]"
+```
+
+Please open an issue before starting large features.
+
+---
+
+## License
+
+MIT — free to use, modify, and distribute.

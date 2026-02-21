@@ -1,0 +1,5 @@
+[console_scripts]
+dongle = dongle.init_cmd:main
+dongle-list = dongle.main:cmd_list
+dongle-pick = dongle.main:cmd_pick
+dongle-scan = dongle.main:cmd_scan
