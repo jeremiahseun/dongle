@@ -263,29 +263,61 @@ def fuzzy_score(query: str, path: str) -> int:
     return -1  # no match
 
 
-def search(query: str, paths: list[str], limit: int = 12) -> list[tuple[int, str]]:
-    """Return scored, sorted results."""
+def search(query: str, paths: list[str], limit: int = 12, root: str = "", cwd: str = "") -> list[tuple[int, str]]:
+    """Return scored, sorted results. Paths inside cwd get a massive boost."""
     results = []
+
+    cwd_prefix = ""
+    if cwd and root and cwd.startswith(root):
+        rel = os.path.relpath(cwd, root)
+        if rel and rel != ".":
+            cwd_prefix = rel + os.sep
+
+    abs_cwd = cwd + os.sep if cwd else ""
+
     for r in paths:
         # Check if r is a tuple from workspace mode (display_path, absolute_path)
         if isinstance(r, tuple):
             display_path, abs_path = r
             search_str = display_path
+            is_inside_cwd = abs_path.startswith(abs_cwd) if abs_cwd else False
         else:
             search_str = r
+            is_inside_cwd = search_str.startswith(cwd_prefix) if cwd_prefix else False
 
         s = fuzzy_score(query, search_str)
         if s > 0:
+            if is_inside_cwd:
+                s += 100000
             results.append((s, r))
     results.sort(key=lambda x: -x[0])
     return results[:limit]
+
+VERSION = "0.2.4"
+
+def check_for_updates():
+    """Check GitHub for a newer release. Returns True if update available."""
+    try:
+        import urllib.request
+        url = "https://api.github.com/repos/jeremiahseun/dongle/releases/latest"
+        req = urllib.request.Request(url, headers={"User-Agent": "Dongle"})
+        with urllib.request.urlopen(req, timeout=1.5) as response:
+            data = json.loads(response.read().decode())
+            latest = data.get("tag_name", "").lstrip("v")
+            local_v = tuple(int(x) for x in VERSION.split(".") if x.isdigit())
+            remote_v = tuple(int(x) for x in latest.split(".") if x.isdigit())
+            if remote_v > local_v:
+                return True
+    except Exception:
+        pass
+    return False
 
 
 # ──────────────────────────────────────────────
 # TUI Application
 # ──────────────────────────────────────────────
 
-def run_picker(root: str, paths: Optional[list[str]], is_workspace: bool = False) -> Optional[str]:
+def run_picker(root: str, paths: Optional[list[str]], is_workspace: bool = False, cwd: str = "") -> Optional[str]:
     """Show interactive search UI. Returns selected path or None."""
     is_scanning = [paths is None]
     paths = paths or []
@@ -337,7 +369,7 @@ def run_picker(root: str, paths: Optional[list[str]], is_workspace: bool = False
 
     def refresh_results(text):
         if text:
-            scored = search(text, paths, limit=max_results)
+            scored = search(text, paths, limit=max_results, root=root, cwd=cwd)
             results[0] = [p for _, p in scored]
         else:
             results[0] = paths[:max_results]
