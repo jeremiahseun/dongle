@@ -396,6 +396,17 @@ def run_picker(root: str, paths: Optional[list[str]], is_workspace: bool = False
     except RuntimeError:
         loop = asyncio.get_event_loop()
 
+    has_update = [False]
+    def bg_update_check():
+        if check_for_updates():
+            has_update[0] = True
+            try:
+                loop.call_soon_threadsafe(lambda: app.invalidate())
+            except Exception:
+                pass
+
+    threading.Thread(target=bg_update_check, daemon=True).start()
+
     def bg_scan():
         cache_key = "WORKSPACE:" + root if is_workspace else root
         new_paths = scan_paths(root, is_workspace=is_workspace)
@@ -415,11 +426,15 @@ def run_picker(root: str, paths: Optional[list[str]], is_workspace: bool = False
     result_control = FormattedTextControl(text=render_results, focusable=False)
 
     root_display = root.replace(str(Path.home()), "~")
-    header = FormattedTextControl(HTML(
-        f'<b style="color: #5f87ff">  Dongle</b>'
-        f'<style fg="#666">  in {root_display}</style>\n'
-        f'<style fg="#444">  ↑↓ navigate  Enter select  Esc cancel</style>'
-    ))
+    def get_header():
+        update_text = '  <style fg="#ffaa00">🚀 Update available: run `dongle update`</style>' if has_update[0] else ''
+        return HTML(
+            f'<b style="color: #5f87ff">  Dongle</b>'
+            f'<style fg="#666">  in {root_display}</style>{update_text}\n'
+            f'<style fg="#444">  ↑↓ navigate  Enter select  Esc cancel</style>'
+        )
+
+    header = FormattedTextControl(text=get_header)
 
     search_prompt = FormattedTextControl(HTML('<b style="color: #5fff87">  / </b>'))
 
@@ -511,7 +526,7 @@ def cmd_pick():
     else:
         paths = load_cache(cache_key)
 
-    chosen = run_picker(root, paths, is_workspace=args.workspace)
+    chosen = run_picker(root, paths, is_workspace=args.workspace, cwd=os.getcwd())
     if chosen:
         # If workspace mode, chosen is a tuple (display_path, absolute_path)
         if isinstance(chosen, tuple):
