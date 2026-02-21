@@ -1,4 +1,6 @@
-# <img src="assets/images/logo.png" width="40" height="40" align="top"> Dongle
+<img width="256" height="200" alt="dongle" src="https://github.com/user-attachments/assets/c58d6923-0c32-4d6e-9897-8d422b321033" />
+
+# Dongle
 
 > **Fast, fuzzy directory navigation — for any terminal, any user.**
 
