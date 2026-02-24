@@ -293,7 +293,7 @@ def search(query: str, paths: list[str], limit: int = 12, root: str = "", cwd: s
     results.sort(key=lambda x: -x[0])
     return results[:limit]
 
-VERSION = "0.2.8"
+VERSION = "0.2.9"
 
 def check_for_updates():
     """Check GitHub for a newer release. Returns True if update available."""
@@ -324,8 +324,10 @@ def run_picker(root: str, paths: Optional[list[str]], is_workspace: bool = False
 
     selected = [None]
     max_results = 8
-    results = [paths[:max_results] if paths else []]
+    search_limit = 50
+    results = [paths[:search_limit] if paths else []]
     cursor = [0]
+    scroll = [0]
 
     kb = KeyBindings()
 
@@ -341,49 +343,64 @@ def run_picker(root: str, paths: Optional[list[str]], is_workspace: bool = False
     def cancel(event):
         event.app.exit()
 
+    def _move_cursor(delta):
+        cursor[0] += delta
+        cursor[0] = max(0, min(len(results[0]) - 1, cursor[0]))
+
+        if cursor[0] < scroll[0]:
+            scroll[0] = cursor[0]
+        elif cursor[0] >= scroll[0] + max_results:
+            scroll[0] = cursor[0] - max_results + 1
+
     @kb.add("up")
     @kb.add("c-p")
     def move_up(event):
-        if cursor[0] > 0:
-            cursor[0] -= 1
-        refresh_results(search_buf.text)
+        _move_cursor(-1)
 
     @kb.add("down")
     @kb.add("c-n")
     def move_down(event):
-        if cursor[0] < len(results[0]) - 1:
-            cursor[0] += 1
-        refresh_results(search_buf.text)
+        _move_cursor(1)
 
     @kb.add("tab")
     def move_down_tab(event):
-        if cursor[0] < len(results[0]) - 1:
-            cursor[0] += 1
-        refresh_results(search_buf.text)
+        _move_cursor(1)
 
     @kb.add("s-tab")
     def move_up_stab(event):
-        if cursor[0] > 0:
-            cursor[0] -= 1
-        refresh_results(search_buf.text)
+        _move_cursor(-1)
 
     def refresh_results(text):
         if text:
-            scored = search(text, paths, limit=max_results, root=root, cwd=cwd)
+            scored = search(text, paths, limit=search_limit, root=root, cwd=cwd)
             results[0] = [p for _, p in scored]
         else:
-            results[0] = paths[:max_results]
+            results[0] = paths[:search_limit]
+
         cursor[0] = min(cursor[0], max(0, len(results[0]) - 1))
+
+        # Adjust scroll bounding
+        if cursor[0] < scroll[0]:
+            scroll[0] = cursor[0]
+        elif cursor[0] >= scroll[0] + max_results:
+            scroll[0] = cursor[0] - max_results + 1
+        elif scroll[0] > max(0, len(results[0]) - max_results):
+            scroll[0] = max(0, len(results[0]) - max_results)
+
         result_control.text = render_results
 
     def on_text_change(buf):
         cursor[0] = 0
+        scroll[0] = 0
         refresh_results(buf.text)
 
     def render_results():
         lines = []
-        for i, item in enumerate(results[0]):
-            is_selected = i == cursor[0]
+        visible_results = results[0][scroll[0]:scroll[0] + max_results]
+
+        for i, item in enumerate(visible_results):
+            actual_idx = scroll[0] + i
+            is_selected = actual_idx == cursor[0]
 
             # Extract paths correctly depending on workspace mode tuple/list
             if isinstance(item, (tuple, list)):
@@ -414,7 +431,7 @@ def run_picker(root: str, paths: Optional[list[str]], is_workspace: bool = False
                 lines.append(("class:no-results", "  No results found\n"))
             drawn = 1
         else:
-            drawn = len(results[0])
+            drawn = len(visible_results)
 
         # Pad so the window NEVER shrinks/jumps — always exactly max_results lines
         for _ in range(max_results - drawn):
