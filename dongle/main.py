@@ -276,8 +276,8 @@ def search(query: str, paths: list[str], limit: int = 12, root: str = "", cwd: s
     abs_cwd = cwd + os.sep if cwd else ""
 
     for r in paths:
-        # Check if r is a tuple from workspace mode (display_path, absolute_path)
-        if isinstance(r, tuple):
+        # Check if r is a tuple/list from workspace mode (display_path, absolute_path)
+        if isinstance(r, (tuple, list)):
             display_path, abs_path = r
             search_str = display_path
             is_inside_cwd = abs_path.startswith(abs_cwd) if abs_cwd else False
@@ -293,7 +293,7 @@ def search(query: str, paths: list[str], limit: int = 12, root: str = "", cwd: s
     results.sort(key=lambda x: -x[0])
     return results[:limit]
 
-VERSION = "0.2.7"
+VERSION = "0.2.8"
 
 def check_for_updates():
     """Check GitHub for a newer release. Returns True if update available."""
@@ -385,8 +385,8 @@ def run_picker(root: str, paths: Optional[list[str]], is_workspace: bool = False
         for i, item in enumerate(results[0]):
             is_selected = i == cursor[0]
 
-            # Extract paths correctly depending on workspace mode tuple
-            if isinstance(item, tuple):
+            # Extract paths correctly depending on workspace mode tuple/list
+            if isinstance(item, (tuple, list)):
                 path, _ = item
             else:
                 path = item
@@ -560,8 +560,8 @@ def cmd_pick():
 
     chosen = run_picker(root, paths, is_workspace=args.workspace, cwd=os.getcwd())
     if chosen:
-        # If workspace mode, chosen is a tuple (display_path, absolute_path)
-        if isinstance(chosen, tuple):
+        # If workspace mode, chosen is a tuple/list (display_path, absolute_path)
+        if isinstance(chosen, (tuple, list)):
             print(chosen[1])
         else:
             full = os.path.join(root, chosen) if chosen != "." else root
