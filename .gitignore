@@ -1,5 +1,11 @@
 /venv
-
-
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
 build/
 build_venv/
+.dongle_cache.json
+.dongle_workspace_cache.json
+.dongle_frecency.json
+

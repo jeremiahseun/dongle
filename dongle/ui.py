@@ -1,146 +1,229 @@
 import os
-import sys
-import asyncio
-from prompt_toolkit import Application
-from prompt_toolkit.keys import Keys
-from prompt_toolkit.layout import Layout, HSplit, Window
-from prompt_toolkit.layout.controls import FormattedTextControl
-from prompt_toolkit.widgets import Frame
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.buffer import Buffer
+from pathlib import Path
 
-from dongle.matcher import search
-from dongle.scanner import scan_paths, save_cache, find_project_root
 
 def run_picker(root, paths, is_workspace=False, cwd=None, initial_query=""):
-    """
-    Run the interactive TUI picker.
-    """
+    """Run the interactive TUI picker. All heavy imports are deferred to here."""
+    # Lazy: prompt_toolkit is only imported when the picker actually opens
+    from prompt_toolkit import Application
+    from prompt_toolkit.keys import Keys
+    from prompt_toolkit.layout import Layout, HSplit, Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.styles import Style
+
+    from dongle.matcher import search
+    from dongle.scanner import scan_paths, save_cache, find_project_root, CACHE_FILE
+    from dongle.frecency import get_frecency_scores
+
     if paths is None:
         paths = scan_paths(root, is_workspace=is_workspace)
-        # We don't save here because we might want to do it in cli.py instead
-        # but for simplicity let's assume scanner handles it or it's done elsewhere.
 
-    current_query = initial_query
-    filtered_paths = search(current_query, paths)
-    selected_index = 0
-    
-    # State to track if we've switched to workspace mode mid-session
+    frecency = get_frecency_scores()
+
     state = {
         "is_workspace": is_workspace,
         "paths": paths,
-        "filtered": filtered_paths,
+        "filtered": search(initial_query, paths, frecency),
         "index": 0,
         "query": initial_query,
         "chosen": None,
-        "is_scanning": False
+        "is_scanning": False,
     }
 
     kb = KeyBindings()
 
     @kb.add("c-c")
     @kb.add("escape")
-    def _(event):
+    def _cancel(event):
         event.app.exit()
 
     @kb.add("enter")
-    def _(event):
+    def _select(event):
         if state["filtered"]:
             state["chosen"] = state["filtered"][state["index"]]
         event.app.exit()
 
     @kb.add("up")
     @kb.add("c-p")
-    def _(event):
-        state["index"] = (state["index"] - 1) % len(state["filtered"]) if state["filtered"] else 0
+    def _up(event):
+        if state["filtered"]:
+            state["index"] = (state["index"] - 1) % len(state["filtered"])
+        event.app.invalidate()
 
     @kb.add("down")
     @kb.add("c-n")
-    def _(event):
-        state["index"] = (state["index"] + 1) % len(state["filtered"]) if state["filtered"] else 0
+    def _down(event):
+        if state["filtered"]:
+            state["index"] = (state["index"] + 1) % len(state["filtered"])
+        event.app.invalidate()
 
-    # Feature 3: Workspace Fallback (Ctrl+W)
+    @kb.add("c-u")
+    def _clear(event):
+        state["query"] = ""
+        state["filtered"] = search("", state["paths"], frecency)
+        state["index"] = 0
+        event.app.invalidate()
+
     @kb.add("c-w")
-    def _(event):
+    def _workspace(event):
         if not state["is_workspace"]:
-            # Trigger workspace scan
             state["is_workspace"] = True
             state["is_scanning"] = True
             event.app.invalidate()
-            
-            # Use find_project_root logic or search dir
             ws_root = find_project_root(cwd or os.getcwd())
             state["paths"] = scan_paths(ws_root, is_workspace=True)
             state["is_scanning"] = False
-            
-            # Re-filter
-            state["filtered"] = search(state["query"], state["paths"])
+            state["filtered"] = search(state["query"], state["paths"], frecency)
             state["index"] = 0
             event.app.invalidate()
 
+    @kb.add("c-r")
+    def _rescan(event):
+        state["is_scanning"] = True
+        event.app.invalidate()
+        state["paths"] = scan_paths(root, is_workspace=state["is_workspace"])
+        cache_file = Path.home() / ".dongle_workspace_cache.json" if state["is_workspace"] else CACHE_FILE
+        cache_key = "WORKSPACE:" + root if state["is_workspace"] else root
+        save_cache(cache_key, state["paths"], cache_file)
+        state["is_scanning"] = False
+        state["filtered"] = search(state["query"], state["paths"], frecency)
+        state["index"] = 0
+        event.app.invalidate()
+
+    @kb.add(Keys.Any)
+    def _type(event):
+        if event.data and len(event.data) == 1 and event.data.isprintable():
+            state["query"] += event.data
+            state["filtered"] = search(state["query"], state["paths"], frecency)
+            state["index"] = 0
+            event.app.invalidate()
+
+    @kb.add("backspace")
+    def _backspace(event):
+        state["query"] = state["query"][:-1]
+        state["filtered"] = search(state["query"], state["paths"], frecency)
+        state["index"] = 0
+        event.app.invalidate()
+
     def get_prompt_text():
-        # Feature 3 Visual Hint
-        hint = ""
-        if not state["filtered"] and not state["is_workspace"]:
-            hint = " (No results. Press Ctrl+W for workspace search)"
-            
-        prefix = "Workspace " if state["is_workspace"] else ""
-        scan_msg = " [Scanning...]" if state["is_scanning"] else ""
-        
+        mode = "Workspace" if state["is_workspace"] else "Project"
+        display_root = root.replace(str(Path.home()), "~")
+        n_filtered = len(state["filtered"])
+        n_total = len(state["paths"])
+
+        if state["is_scanning"]:
+            status = "  [Scanning...]"
+        elif state["query"]:
+            status = f"  ({n_filtered}/{n_total})"
+        else:
+            status = f"  ({n_total} dirs)"
+
         return [
-            ("class:title", f"  Dongle {prefix}Search in {root}{scan_msg}{hint}\n"),
-            ("class:prompt", f"  / {state['query']}"),
+            ("class:title", f"  {mode}  "),
+            ("class:title-path", display_root),
+            ("class:title-count", f"{status}\n"),
+            ("class:prompt", "  / "),
+            ("class:query", state["query"]),
+            ("class:cursor", "█"),  # block cursor
         ]
+
+    def _highlight(display_p: str, query: str, selected: bool):
+        sel = "class:selected" if selected else ""
+        arrow = "❯ " if selected else "  "
+        pad = "  "
+
+        if query:
+            q_lo = query.lower()
+            p_lo = display_p.lower()
+            idx = p_lo.find(q_lo)
+            if idx >= 0:
+                pre = display_p[:idx]
+                mid = display_p[idx:idx + len(query)]
+                post = display_p[idx + len(query):]
+                hi = f"{sel},class:match" if selected else "class:match"
+                return [
+                    (sel, f"{pad}{arrow}{pre}"),
+                    (hi, mid),
+                    (sel, f"{post}\n"),
+                ]
+
+        return [(sel, f"{pad}{arrow}{display_p}\n")]
 
     def get_results_text():
         if not state["filtered"]:
-            return [("class:error", "    No matches found.")]
-            
+            if state["query"]:
+                return [
+                    ("class:no-match", "    No matches.\n"),
+                    ("class:hint", "    Ctrl+W — search across workspaces\n"),
+                ]
+            return [("class:hint", "    Start typing to filter...\n")]
+
         results = []
-        # Show top 15 results
         start = max(0, state["index"] - 7)
         end = min(len(state["filtered"]), start + 15)
-        
+
         for i in range(start, end):
             p = state["filtered"][i]
-            # Handle workspace tuple results
             display_p = p[0] if isinstance(p, (tuple, list)) else p
-            
-            if i == state["index"]:
-                results.append(("class:selected", f"  ❯ {display_p}\n"))
-            else:
-                results.append(("", f"    {display_p}\n"))
+            results.extend(_highlight(display_p, state["query"], i == state["index"]))
+
         return results
 
-    prompt_control = FormattedTextControl(get_prompt_text)
-    results_control = FormattedTextControl(get_results_text)
+    def get_footer_text():
+        return [
+            ("class:footer-key", " ↑↓"),
+            ("class:footer", " nav  "),
+            ("class:footer-key", "Enter"),
+            ("class:footer", " select  "),
+            ("class:footer-key", "^W"),
+            ("class:footer", " workspace  "),
+            ("class:footer-key", "^R"),
+            ("class:footer", " rescan  "),
+            ("class:footer-key", "^U"),
+            ("class:footer", " clear  "),
+            ("class:footer-key", "Esc"),
+            ("class:footer", " cancel "),
+        ]
 
-    layout = Layout(HSplit([
-        Window(content=prompt_control, height=2),
-        Window(content=results_control)
-    ]))
+    style = Style.from_dict({
+        "title": "#5f9ea0 bold",
+        "title-path": "#87ceeb",
+        "title-count": "#666666",
+        "prompt": "#00d787 bold",
+        "query": "#ffffff bold",
+        "cursor": "#00d787",
+        "selected": "bg:#1a3a5c #ffffff bold",
+        "match": "#ffaf00 bold",
+        "selected,match": "bg:#1a3a5c #ffaf00 bold",
+        "no-match": "#666666",
+        "hint": "#444444",
+        "footer": "#444444",
+        "footer-key": "#777777 bold",
+    })
+
+    prompt_win = Window(
+        content=FormattedTextControl(get_prompt_text, focusable=False),
+        height=2,
+    )
+    results_win = Window(
+        content=FormattedTextControl(get_results_text, focusable=False),
+        height=15,
+    )
+    footer_win = Window(
+        content=FormattedTextControl(get_footer_text, focusable=False),
+        height=1,
+    )
+
+    layout = Layout(HSplit([prompt_win, results_win, footer_win]))
 
     app = Application(
         layout=layout,
         key_bindings=kb,
+        style=style,
         full_screen=False,
+        mouse_support=False,
     )
-
-    # Simple buffer-less interaction for now, or we can use a Buffer
-    # To support typing, we need to capture keys.
-    
-    @kb.add(Keys.Any)
-    def _(event):
-        if event.data and len(event.data) == 1:
-            state["query"] += event.data
-            state["filtered"] = search(state["query"], state["paths"])
-            state["index"] = 0
-            
-    @kb.add("backspace")
-    def _(event):
-        state["query"] = state["query"][:-1]
-        state["filtered"] = search(state["query"], state["paths"])
-        state["index"] = 0
 
     app.run()
     return state["chosen"]
