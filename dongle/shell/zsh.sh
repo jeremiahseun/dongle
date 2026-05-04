@@ -1,7 +1,5 @@
 # Dongle — Zsh Integration
 # Add to your ~/.zshrc:
-#   source /path/to/dongle/shell/zsh.sh
-# Or if installed via pip:
 #   eval "$(dongle init zsh)"
 
 __dongle_widget() {
@@ -10,13 +8,11 @@ __dongle_widget() {
 
     if [ $? -eq 0 ] && [ -n "$chosen" ]; then
         if [ -z "$BUFFER" ]; then
-            # Empty prompt: navigate directly
             cd "$chosen"
             local display="${chosen/#$HOME/~}"
             zle -M "  → $display"
             zle reset-prompt
         else
-            # Insert into current buffer at cursor
             LBUFFER="${LBUFFER}${chosen}"
         fi
     fi
@@ -34,34 +30,43 @@ __dongle_slash() {
 zle -N __dongle_widget
 zle -N __dongle_slash
 
-# Bind / on empty line, Ctrl+/ anywhere (+ Ctrl+O fallback for macOS)
-bindkey "/" __dongle_slash
-bindkey "^_" __dongle_widget   # Ctrl+/ (works on most Linux terminals)
-bindkey "^O" __dongle_widget   # Ctrl+O (reliable macOS alternative)
-bindkey "^]p" __dongle_widget  # Ctrl+] p fallback
+bindkey "/"   __dongle_slash
+bindkey "^_"  __dongle_widget   # Ctrl+/
+bindkey "^O"  __dongle_widget   # Ctrl+O  (macOS fallback)
+bindkey "^]p" __dongle_widget   # Ctrl+] p fallback
 
-# Convenience shortcuts
+# dg — fuzzy search from current project root
 dg() {
     local chosen
     chosen="$(dongle pick --query "$*" 2>/dev/tty)"
     [ $? -eq 0 ] && [ -n "$chosen" ] && cd "$chosen"
 }
 
-dgs() {
-    dongle scan "$@"
-}
+# dgs — pre-scan & cache current project
+dgs() { dongle scan "$@"; }
 
+# dgw — workspace-wide fuzzy search
 dgw() {
     local chosen
     chosen="$(dongle pick --workspace --query "$*" </dev/tty 2>/dev/tty)"
     [ $? -eq 0 ] && [ -n "$chosen" ] && cd "$chosen"
 }
 
-dgws() {
-    dongle scan --workspace "$@"
+# dgws — pre-scan workspaces
+dgws() { dongle scan --workspace "$@"; }
+
+# dgr — jump to project root immediately (no picker needed)
+dgr() {
+    local root
+    root="$(dongle root)"
+    [ $? -eq 0 ] && [ -n "$root" ] && cd "$root" && echo "  → ${root/#$HOME/~}"
 }
 
-# Auto pre-scan the current directory in the background on shell load
-(dongle scan &>/dev/null &)
+# dgl — list all cached paths for current project
+dgl() { dongle list "$@"; }
 
-echo "  🔌 Dongle loaded. Press / on empty prompt, Ctrl+O anywhere, or type 'dg'"
+# dgrecent — show recently visited directories
+dgrecent() { dongle recent; }
+
+# Warm the cache in the background when a new shell opens
+(dongle scan &>/dev/null &)

@@ -1,61 +1,106 @@
 import re
+import heapq
 
-def fuzzy_score(query: str, path: str) -> int:
+_SEP = re.compile(r"[ /\\]+")
+_DISPLAY_LIMIT = 50   # keep top N candidates; we show at most 15
+
+
+def _score(q: str, q_segs: list, path_lower: str, path_len: int) -> int:
     """
-    Calculate a fuzzy match score for a query against a path.
-    Higher is better. 0 means no match.
-    
-    Feature 4: Added a massive bonus for exact segment matches.
+    Score a single path against a pre-processed query.
+
+    q         : lowercased full query string
+    q_segs    : query split on separators (computed once by caller)
+    path_lower: already-lowercased path
+    path_len  : len(original path)
     """
-    if not query:
-        return 1
-        
-    query = query.lower()
-    path_lower = path.lower()
-    
-    # Exact match gets highest priority
-    if query == path_lower:
-        return 1000000
-        
-    # Split query into segments (by space or /)
-    query_segments = re.split(r'[ /\\]+', query)
-    path_segments = re.split(r'[ /\\]+', path_lower)
-    
+    if q == path_lower:
+        return 1_000_000
+
     score = 0
-    
-    # Feature 4: Bonus for exact segment matches
-    # If a query segment perfectly matches a path segment, give a huge boost.
-    for q_seg in query_segments:
-        if not q_seg: continue
-        if q_seg in path_segments:
-            score += 50000
-            
-    # Substring match
-    if query in path_lower:
-        score += 10000 - path_lower.find(query)
-        return score
-        
-    # Fuzzy character sequence match
-    it = iter(path_lower)
-    if all(c in it for c in query):
-        # Character sequence match score: 
-        # Base score + bonus for shorter paths (closer match)
-        score += 1000 - len(path)
-        return score
-        
-    return score
 
-def search(query: str, paths: list) -> list:
-    """Filter and sort paths based on query."""
+    # Substring match — most common fast path, checked before segment split
+    idx = path_lower.find(q)
+    if idx >= 0:
+        # Segment-exact bonus on top of substring score
+        if q_segs:
+            # path.split('/') is much faster than regex split for real paths
+            p_segs = path_lower.split("/")
+            for qs in q_segs:
+                if qs in p_segs:
+                    score += 50_000
+        score += 10_000 - idx
+        return score
+
+    # Segment-exact bonus (no full substring match)
+    if q_segs:
+        p_segs = path_lower.split("/")
+        for qs in q_segs:
+            if qs in p_segs:
+                score += 50_000
+
+    # If we already have segment bonus points, return without fuzzy
+    if score > 0:
+        return score
+
+    # Fuzzy character-sequence match (most expensive, last resort)
+    it = iter(path_lower)
+    if all(c in it for c in q):
+        return 1_000 - path_len
+
+    return 0
+
+
+def search(query: str, paths: list, frecency: dict = None) -> list:
+    """
+    Filter and rank paths against query.
+
+    - Pre-computes query segments once (not per path).
+    - Applies frecency boost when provided.
+    - Returns paths sorted best-first.
+    """
     if not query:
-        return sorted(paths, key=len)
-        
+        if frecency:
+            return sorted(
+                paths,
+                key=lambda p: (
+                    -frecency.get(p[1] if isinstance(p, (tuple, list)) else p, 0),
+                    len(p[0] if isinstance(p, (tuple, list)) else p),
+                ),
+            )
+        return sorted(
+            paths,
+            key=lambda p: len(p[0] if isinstance(p, (tuple, list)) else p),
+        )
+
+    q = query.lower()
+    q_segs = [s for s in _SEP.split(q) if s]
+
     scored = []
     for p in paths:
-        s = fuzzy_score(query, p)
+        display = p[0] if isinstance(p, (tuple, list)) else p
+        display_lower = display.lower()
+        s = _score(q, q_segs, display_lower, len(display))
         if s > 0:
+            if frecency:
+                full_path = p[1] if isinstance(p, (tuple, list)) else p
+                s += frecency.get(full_path, 0) * 10
             scored.append((s, p))
-            
-    # Sort by score (desc), then length (asc)
-    scored.sort(key=lambda x: (-x[0], len(x[1])))
-    return [p for s, p in scored]
+
+    # Partial sort: only need the top _DISPLAY_LIMIT entries
+    if len(scored) > _DISPLAY_LIMIT:
+        top = heapq.nlargest(_DISPLAY_LIMIT, scored, key=lambda x: (
+            x[0],
+            -len(x[1][0] if isinstance(x[1], (tuple, list)) else x[1]),
+        ))
+        top.sort(key=lambda x: (
+            -x[0],
+            len(x[1][0] if isinstance(x[1], (tuple, list)) else x[1]),
+        ))
+        return [p for _, p in top]
+
+    scored.sort(key=lambda x: (
+        -x[0],
+        len(x[1][0] if isinstance(x[1], (tuple, list)) else x[1]),
+    ))
+    return [p for _, p in scored]

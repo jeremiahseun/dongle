@@ -1,10 +1,10 @@
 import os
 from pathlib import Path
 
-VERSION = "0.2.9"
+VERSION = "0.3.0"
 
 CACHE_FILE = Path.home() / ".dongle_cache.json"
-CACHE_TTL = 300  # 5 minutes
+FRECENCY_FILE = Path.home() / ".dongle_frecency.json"
 
 SKIP_DIRS = {
     ".git", ".svn", ".hg", "node_modules", "__pycache__", ".cache",
@@ -15,12 +15,38 @@ SKIP_DIRS = {
 
 ROOT_MARKERS = {
     ".git", ".svn", ".hg", "package.json", "pubspec.yaml", "pyproject.toml",
-    "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "Makefile"
+    "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "Makefile",
 }
 
-# Allow setting depth for workspace searches natively via config
+# Extra dirs to skip, user-configurable
+_extra = os.environ.get("DONGLE_SKIP_DIRS", "")
+if _extra:
+    SKIP_DIRS |= {d.strip() for d in _extra.split(",") if d.strip()}
+
+
+def get_cache_ttl() -> int:
+    try:
+        return int(os.environ.get("DONGLE_CACHE_TTL", "300"))
+    except ValueError:
+        return 300
+
+
+def get_max_depth() -> int:
+    try:
+        return int(os.environ.get("DONGLE_MAX_DEPTH", "6"))
+    except ValueError:
+        return 6
+
+
 def get_workspace_depth() -> int:
     try:
         return int(os.environ.get("DONGLE_WORKSPACE_DEPTH", "4"))
     except ValueError:
         return 4
+
+
+def get_max_dirs() -> int:
+    try:
+        return int(os.environ.get("DONGLE_MAX_DIRS", "5000"))
+    except ValueError:
+        return 5000

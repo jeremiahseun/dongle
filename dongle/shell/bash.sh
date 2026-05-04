@@ -1,37 +1,25 @@
 # Dongle — Bash Integration
 # Add to your ~/.bashrc:
-#   source /path/to/dongle/shell/bash.sh
-# Or if installed via pip:
 #   eval "$(dongle init bash)"
 
 __dongle_widget() {
-    # Save current line
     local current_line="$READLINE_LINE"
     local current_point="$READLINE_POINT"
-
-    # Run picker, capture output
     local chosen
     chosen="$(dongle pick 2>/dev/tty)"
 
     if [ $? -eq 0 ] && [ -n "$chosen" ]; then
-        # If the line already has content, replace it or cd directly
         if [ -z "$current_line" ]; then
-            # Empty prompt: cd to the path
             cd "$chosen" && echo "  → $(pwd | sed "s|$HOME|~|")"
+            READLINE_LINE=""
+            READLINE_POINT=0
         else
-            # Insert path into current command line
             READLINE_LINE="${current_line:0:$current_point}$chosen${current_line:$current_point}"
             READLINE_POINT=$(( current_point + ${#chosen} ))
-            return
         fi
-        # Redraw prompt
-        READLINE_LINE=""
-        READLINE_POINT=0
     fi
 }
 
-# Bind / key at the START of an empty line to trigger picker
-# Bind Ctrl+/ anywhere to trigger picker
 __dongle_slash() {
     if [ -z "$READLINE_LINE" ]; then
         __dongle_widget
@@ -41,29 +29,48 @@ __dongle_slash() {
     fi
 }
 
-# Keybindings
 bind -x '"/":__dongle_slash'
 bind -x '"":__dongle_widget'   # Ctrl+/
 
-# Convenience shortcuts
+# dg — fuzzy search from current project root
 dg() {
-    cd "$(dongle pick --query "$*" 2>/dev/tty)" && echo "  → $(pwd | sed "s|$HOME|~|")"
+    local chosen
+    chosen="$(dongle pick --query "$*" 2>/dev/tty)"
+    [ $? -eq 0 ] && [ -n "$chosen" ] && cd "$chosen" && echo "  → $(pwd | sed "s|$HOME|~|")"
 }
+
+# dgs — pre-scan & cache current project
 alias dgs='dongle scan'
+
+# dgw — workspace-wide fuzzy search
 dgw() {
-    cd "$(dongle pick --workspace --query "$*" </dev/tty 2>/dev/tty)" && echo "  → $(pwd | sed "s|$HOME|~|")"
+    local chosen
+    chosen="$(dongle pick --workspace --query "$*" </dev/tty 2>/dev/tty)"
+    [ $? -eq 0 ] && [ -n "$chosen" ] && cd "$chosen" && echo "  → $(pwd | sed "s|$HOME|~|")"
 }
+
+# dgws — pre-scan workspaces
 alias dgws='dongle scan --workspace'
 
-# Tab completion for dongle command
+# dgr — jump to project root immediately (no picker needed)
+dgr() {
+    local root
+    root="$(dongle root)"
+    [ $? -eq 0 ] && [ -n "$root" ] && cd "$root" && echo "  → $(pwd | sed "s|$HOME|~|")"
+}
+
+# dgl — list all cached paths for current project
+alias dgl='dongle list'
+
+# dgrecent — show recently visited directories
+alias dgrecent='dongle recent'
+
+# Tab completion for dongle subcommands
 _dongle_complete() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     COMPREPLY=($(compgen -d -- "$cur"))
 }
 complete -F _dongle_complete dongle pick scan
 
-# Auto pre-scan the current directory in the background
+# Warm the cache in the background when a new shell opens
 (dongle scan &>/dev/null &)
-
-echo "  🔌 Dongle loaded. Press / on empty prompt or Ctrl+/ anywhere."
-echo "  Also try: dg (launch picker)"
