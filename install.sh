@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────
-# Dongle Installer
+# Dongle Installer / Updater
 # Usage: curl -sSL https://raw.githubusercontent.com/jeremiahseun/dongle/main/install.sh | bash
 # ──────────────────────────────────────────────
 
@@ -14,6 +14,7 @@ GREEN="\033[0;32m"
 CYAN="\033[0;36m"
 YELLOW="\033[0;33m"
 RED="\033[0;31m"
+DIM="\033[2m"
 RESET="\033[0m"
 
 log()    { echo -e "  ${CYAN}${*}${RESET}"; }
@@ -21,8 +22,9 @@ ok()     { echo -e "  ${GREEN}✓ ${*}${RESET}"; }
 warn()   { echo -e "  ${YELLOW}⚠ ${*}${RESET}"; }
 error()  { echo -e "  ${RED}✗ ${*}${RESET}"; exit 1; }
 header() { echo -e "\n${BOLD}${*}${RESET}"; }
+dim()    { echo -e "  ${DIM}${*}${RESET}"; }
 
-header "🔌 Dongle Installer"
+header "Dongle Installer / Updater"
 echo ""
 
 # ── Detect OS and Architecture ────────────────
@@ -38,9 +40,9 @@ detect_platform() {
     esac
 
     case "$arch" in
-        x86_64|amd64)   arch="x64"   ;;
-        arm64|aarch64)  arch="arm64" ;;
-        *)              error "Unsupported architecture: $arch" ;;
+        x86_64|amd64)  arch="x64"   ;;
+        arm64|aarch64) arch="arm64" ;;
+        *)             error "Unsupported architecture: $arch" ;;
     esac
 
     echo "${os}-${arch}"
@@ -49,22 +51,64 @@ detect_platform() {
 PLATFORM=$(detect_platform)
 log "Detected platform: ${BOLD}${PLATFORM}${RESET}"
 
-# ── Try pip install first ─────────────────────
+# ── Version helpers ───────────────────────────
+
+# Fetch the latest release tag from GitHub (returns e.g. "v0.3.0")
+get_latest_tag() {
+    curl -sSL "https://api.github.com/repos/${REPO}/releases/latest" \
+        | grep '"tag_name"' | head -1 \
+        | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
+}
+
+# Strip leading "v" from a version string
+strip_v() { echo "${1#v}"; }
+
+# Get the currently installed version ("0.3.0"), or empty string if not installed
+get_installed_version() {
+    if command -v dongle &>/dev/null; then
+        dongle version 2>/dev/null | awk '{print $2}'
+    fi
+}
+
+# Returns "pip", "binary", or "" (not installed)
+detect_install_type() {
+    if ! command -v dongle &>/dev/null; then
+        echo ""
+        return
+    fi
+    # pip-installed dongle can be detected via pip show
+    local PYTHON=""
+    for py in python3 python; do
+        if command -v "$py" &>/dev/null; then
+            PYTHON="$py"
+            break
+        fi
+    done
+    if [ -n "$PYTHON" ] && $PYTHON -m pip show dongle &>/dev/null 2>&1; then
+        echo "pip"
+        return
+    fi
+    # Fall back to checking if it's in our binary install dir
+    echo "binary"
+}
+
+# ── Install via pip ───────────────────────────
 install_via_pip() {
-    header "Installing via pip..."
+    local mode="${1:-install}"   # "install" or "upgrade"
+    header "$([ "$mode" = "upgrade" ] && echo "Upgrading via pip..." || echo "Installing via pip...")"
 
     local PYTHON=""
-    if command -v python3 &>/dev/null; then
-        PYTHON=python3
-    elif command -v python &>/dev/null; then
-        PYTHON=python
-    fi
+    for py in python3 python; do
+        if command -v "$py" &>/dev/null; then
+            PYTHON="$py"
+            break
+        fi
+    done
 
     if [ -z "$PYTHON" ]; then
         return 1
     fi
 
-    # Check Python version >= 3.10
     local py_major py_minor
     py_major=$($PYTHON -c "import sys; print(sys.version_info.major)")
     py_minor=$($PYTHON -c "import sys; print(sys.version_info.minor)")
@@ -74,7 +118,6 @@ install_via_pip() {
         return 1
     fi
 
-    # Check pip
     if ! $PYTHON -m pip --version &>/dev/null; then
         warn "pip not found. Falling back to binary."
         return 1
@@ -82,17 +125,16 @@ install_via_pip() {
 
     ok "Python $py_major.$py_minor with pip found"
 
-    # Try user install first, then system
-    if $PYTHON -m pip install --user dongle 2>/dev/null; then
-        ok "Dongle installed via pip (user)"
-    elif $PYTHON -m pip install dongle 2>/dev/null; then
-        ok "Dongle installed via pip (system)"
+    local pip_flags="--upgrade"
+    if $PYTHON -m pip install $pip_flags --user dongle 2>/dev/null; then
+        ok "Dongle $([ "$mode" = "upgrade" ] && echo "upgraded" || echo "installed") via pip (user)"
+    elif $PYTHON -m pip install $pip_flags dongle 2>/dev/null; then
+        ok "Dongle $([ "$mode" = "upgrade" ] && echo "upgraded" || echo "installed") via pip (system)"
     else
         warn "pip install failed. Falling back to binary."
         return 1
     fi
 
-    # Ensure ~/.local/bin is in PATH
     local LOCAL_BIN="$HOME/.local/bin"
     if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
         add_to_path "$LOCAL_BIN"
@@ -103,13 +145,12 @@ install_via_pip() {
 
 # ── Download pre-built binary ─────────────────
 install_via_binary() {
-    header "Installing standalone binary..."
-    log "No Python required! Downloading pre-built binary for ${PLATFORM}..."
+    local mode="${1:-install}"
+    header "$([ "$mode" = "upgrade" ] && echo "Upgrading binary..." || echo "Installing standalone binary...")"
+    log "Downloading pre-built binary for ${PLATFORM}..."
 
-    # Get the latest release tag from GitHub
     local latest_tag
-    latest_tag=$(curl -sSL "https://api.github.com/repos/${REPO}/releases/latest" \
-        | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+    latest_tag=$(get_latest_tag)
 
     if [ -z "$latest_tag" ]; then
         error "Could not determine the latest release. Check https://github.com/${REPO}/releases"
@@ -120,21 +161,17 @@ install_via_binary() {
     local binary_name="dongle"
     local base_url="https://github.com/${REPO}/releases/download/${latest_tag}"
 
-    # Create install directory
     mkdir -p "$INSTALL_DIR"
     cd "$INSTALL_DIR" || error "Failed to cd to $INSTALL_DIR"
 
-    # Download binary
     log "Downloading ${binary_name}..."
     if ! curl -sSL -o "${binary_name}" "${base_url}/${binary_name}"; then
         error "Failed to download binary. Check your internet connection."
     fi
 
     chmod +x "${binary_name}"
+    ok "Binary $([ "$mode" = "upgrade" ] && echo "upgraded" || echo "installed") at ${INSTALL_DIR}/${binary_name}"
 
-    ok "Binary installed to ${INSTALL_DIR}/${binary_name}"
-
-    # Add to PATH
     add_to_path "$INSTALL_DIR"
 }
 
@@ -168,7 +205,7 @@ add_shell_integration() {
     local shell_name
     shell_name=$(basename "$SHELL")
 
-    header "Shell Integration  ($shell_name detected)"
+    header "Shell Integration  ($shell_name)"
 
     local rc_file init_line reload_cmd
 
@@ -190,22 +227,21 @@ add_shell_integration() {
             reload_cmd="source $rc_file"
             ;;
         *)
-            warn "Shell '$shell_name' not recognized. Add manually:"
-            echo '    eval "$(dongle init bash)"  # for bash'
-            echo '    eval "$(dongle init zsh)"   # for zsh'
-            echo '    dongle init fish | source   # for fish'
+            warn "Shell '$shell_name' not recognised. Add manually:"
+            echo '    eval "$(dongle init bash)"  # bash'
+            echo '    eval "$(dongle init zsh)"   # zsh'
+            echo '    dongle init fish | source   # fish'
             return
             ;;
     esac
 
-    # Only add if not already present
     if [ -f "$rc_file" ] && grep -qF "dongle init" "$rc_file"; then
-        warn "Dongle init already in $rc_file, skipping"
+        ok "Shell integration already in $rc_file"
     else
         echo "" >> "$rc_file"
         echo "# Dongle — fast fuzzy directory navigation" >> "$rc_file"
         echo "$init_line" >> "$rc_file"
-        ok "Added to $rc_file"
+        ok "Added shell integration to $rc_file"
     fi
 
     RELOAD_CMD="$reload_cmd"
@@ -215,28 +251,67 @@ add_shell_integration() {
 
 RELOAD_CMD=""
 
-# Try pip first, fall back to binary
-if install_via_pip; then
-    log "Installed via pip (Python)"
+INSTALLED_VERSION=$(get_installed_version)
+INSTALL_TYPE=$(detect_install_type)
+
+if [ -n "$INSTALLED_VERSION" ]; then
+    # ── Already installed: check if an update is available ──
+    log "Found existing install: dongle ${BOLD}${INSTALLED_VERSION}${RESET}"
+    log "Checking for updates..."
+
+    LATEST_TAG=$(get_latest_tag)
+    LATEST_VERSION=$(strip_v "$LATEST_TAG")
+
+    if [ -z "$LATEST_VERSION" ]; then
+        warn "Could not reach GitHub to check for updates. Try again later."
+        exit 0
+    fi
+
+    if [ "$INSTALLED_VERSION" = "$LATEST_VERSION" ]; then
+        echo ""
+        ok "Already up to date  (${BOLD}v${INSTALLED_VERSION}${RESET})"
+        echo ""
+        dim "Run 'dongle doctor' if something seems wrong."
+        echo ""
+        exit 0
+    fi
+
+    echo ""
+    log "Update available: ${BOLD}v${INSTALLED_VERSION}${RESET} → ${GREEN}${BOLD}v${LATEST_VERSION}${RESET}"
+    echo ""
+
+    # Upgrade using the same method as the original install
+    if [ "$INSTALL_TYPE" = "pip" ]; then
+        install_via_pip "upgrade" || install_via_binary "upgrade"
+    else
+        install_via_binary "upgrade"
+    fi
+
 else
-    install_via_binary
+    # ── Fresh install ──
+    if install_via_pip "install"; then
+        log "Installed via pip"
+    else
+        install_via_binary "install"
+    fi
+
+    add_shell_integration
 fi
 
-# Set up shell integration
-add_shell_integration
-
 # ── Done ──────────────────────────────────────
-header "Done! 🎉"
+header "Done!"
 echo ""
-echo -e "  Reload your shell to start using Dongle:"
-echo -e "  ${BOLD}${RELOAD_CMD}${RESET}"
-echo ""
-echo -e "  ${CYAN}How to use:${RESET}"
-echo -e "  Press ${BOLD}/${RESET} on an empty prompt → opens directory search"
-echo -e "  Press ${BOLD}Ctrl+/${RESET} anywhere → opens directory search"
-echo -e "  Type ${BOLD}dg${RESET}  → same as pressing /"
-echo -e "  Type ${BOLD}dgw${RESET} → search across all your workspaces"
-echo -e "  Type ${BOLD}dgs${RESET} → pre-scan & cache current directory"
+if [ -n "$RELOAD_CMD" ]; then
+    echo -e "  Reload your shell to start using Dongle:"
+    echo -e "  ${BOLD}${RELOAD_CMD}${RESET}"
+    echo ""
+fi
+echo -e "  ${CYAN}Quick start:${RESET}"
+echo -e "  Press ${BOLD}/${RESET} on an empty prompt    → open directory search"
+echo -e "  Press ${BOLD}Ctrl+O${RESET} anywhere          → open directory search"
+echo -e "  Type  ${BOLD}dg${RESET}                       → same as /"
+echo -e "  Type  ${BOLD}dgw${RESET}                      → search across all your projects"
+echo -e "  Type  ${BOLD}dgr${RESET}                      → jump to project root instantly"
 echo ""
 echo -e "  ${CYAN}Docs:${RESET} https://github.com/${REPO}"
 echo ""
