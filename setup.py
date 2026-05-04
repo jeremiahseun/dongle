@@ -13,10 +13,10 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "dongle=dongle.init_cmd:main",
-            "dongle-pick=dongle.main:cmd_pick",
-            "dongle-scan=dongle.main:cmd_scan",
-            "dongle-list=dongle.main:cmd_list",
+            "dongle=dongle.cli:main",
+            "dongle-pick=dongle.cli:cmd_pick",
+            "dongle-scan=dongle.cli:cmd_scan",
+            "dongle-list=dongle.cli:cmd_list",
         ],
     },
 )

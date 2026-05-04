@@ -3,8 +3,14 @@ README.md
 pyproject.toml
 setup.py
 dongle/__init__.py
+dongle/cli.py
+dongle/config.py
 dongle/init_cmd.py
 dongle/main.py
+dongle/matcher.py
+dongle/scanner.py
+dongle/ui.py
+dongle/utils.py
 dongle.egg-info/PKG-INFO
 dongle.egg-info/SOURCES.txt
 dongle.egg-info/dependency_links.txt
@@ -14,3 +20,4 @@ dongle.egg-info/top_level.txt
 dongle/shell/bash.sh
 dongle/shell/fish.fish
 dongle/shell/zsh.sh
+tests/test_matcher.py

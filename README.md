@@ -28,9 +28,11 @@ https://github.com/user-attachments/assets/6460e432-f732-4d4b-8324-1308ee36460c
 ## Features
 
 - **Google-style live search** — results update as you type
-- **Fuzzy matching** — `src/comp` finds `src/components/Button`
+- **Pre-filled queries** — type `dg query` or `dgw query` to instantly open the picker with your search applied
+- **Fuzzy matching** — `src/comp` finds `src/components/Button`. Exact folder segments receive massive ranking bonuses (e.g. `android` perfectly matches the `/android` folder).
 - **Smart project root** — searches from the project root, not just `$PWD`. Deep inside `ios/`? You can still find `android/`
 - **Workspace search** — type `dgw` to search across all your projects instantly
+- **Workspace fallback** — hit `Ctrl+W` during a local search to dynamically switch to a global workspace search without restarting the picker
 - **`.gitignore` aware** — automatically respects your `.gitignore` and `.dongleignore` files
 - **Any terminal** — works in Bash, Zsh, and Fish
 - **Fast** — scans and caches paths in milliseconds
@@ -48,11 +50,11 @@ curl -sSL https://raw.githubusercontent.com/jeremiahseun/dongle/main/install.sh 
 
 The installer automatically:
 - Detects your OS (macOS / Linux) and architecture (ARM / x64)
-- Installs via `pip` if Python 3.10+ is available
-- Downloads a **standalone binary** from [GitHub Releases](https://github.com/jeremiahseun/dongle/releases) if Python is not installed
+- Downloads a **single standalone binary** for macOS/Linux (no Python required!)
+- Sets up the unified `dongle` command with subcommands (`pick`, `scan`, `init`)
 - Adds Dongle to your shell config (`~/.zshrc`, `~/.bashrc`, or Fish config)
 
-> **No Python? No problem.** The installer handles everything automatically.
+> **No Python? No problem.** The installer handles everything and gives you a single binary to manage.
 
 ### Or install manually via pip
 
@@ -88,6 +90,7 @@ Dongle currently supports macOS and Linux. For Windows, install via [WSL](https:
 | Press `/` on an empty prompt | Open directory search in current folder |
 | Press `Ctrl+O` anywhere | Open directory search (insert path at cursor) |
 | Type `dg` | Same as pressing / |
+| Type `dg query` | Open directory search with pre-filled typed query |
 | Type `dgw` | Open **Workspace Search** (search across multiple projects) |
 | Type `dgs` | Pre-scan and cache the current directory |
 | `dongle-pick ~/projects/myapp` | Search from a specific root |
@@ -100,6 +103,7 @@ Dongle currently supports macOS and Linux. For Windows, install via [WSL](https:
 | Type | Filter results live |
 | `↑` / `↓` or `Ctrl+P` / `Ctrl+N` | Move selection |
 | `Tab` / `Shift+Tab` | Move selection |
+| `Ctrl+W` | Switch to global workspace search (`dgw` mode) dynamically |
 | `Enter` | Navigate to selected path |
 | `Esc` or `Ctrl+C` | Cancel |
 
@@ -122,6 +126,7 @@ Dongle works out of the box, but you can customize by setting environment variab
 export DONGLE_WORKSPACES="~/Documents/GitHub,~/Projects" # Folders to search when using dgw
 export DONGLE_SEARCH_DIR="~/Projects"           # Fallback folder when using dg outside a project
 export DONGLE_MAX_DEPTH=8       # how deep to scan (default: 6)
+export DONGLE_WORKSPACE_DEPTH=4 # how deep to scan inside workspaces (default: 4)
 export DONGLE_MAX_DIRS=10000    # max directories to index (default: 5000)
 export DONGLE_CACHE_TTL=600     # cache lifetime in seconds (default: 300)
 export DONGLE_SKIP_DIRS="dist,build,tmp"  # extra dirs to skip

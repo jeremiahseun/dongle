@@ -5,7 +5,7 @@
 #   dongle init fish | source
 
 function __dongle_widget
-    set chosen (dongle-pick 2>/dev/tty)
+    set chosen (dongle pick 2>/dev/tty)
     if test $status -eq 0 -a -n "$chosen"
         if test -z (commandline)
             # Empty prompt: navigate
@@ -34,24 +34,24 @@ bind \c_ __dongle_widget   # Ctrl+/
 
 # Convenience functions
 function dg
-    set chosen (dongle-pick 2>/dev/tty)
+    set chosen (dongle pick --query "$argv" 2>/dev/tty)
     and cd $chosen
 end
 
 function dgs
-    dongle-scan $argv
+    dongle scan $argv
 end
 
 function dgw
-    set chosen (dongle-pick --workspace </dev/tty 2>/dev/tty)
+    set chosen (dongle pick --workspace --query "$argv" </dev/tty 2>/dev/tty)
     and cd $chosen
 end
 
 function dgws
-    dongle-scan --workspace $argv
+    dongle scan --workspace $argv
 end
 
 # Auto pre-scan the current directory in the background
-dongle-scan &>/dev/null &
+dongle scan &>/dev/null &
 
 echo "  🔌 Dongle loaded. Press / on empty prompt, Ctrl+/ anywhere, or use dg"

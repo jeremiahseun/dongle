@@ -6,7 +6,7 @@
 
 __dongle_widget() {
     local chosen
-    chosen="$(dongle-pick 2>/dev/tty)"
+    chosen="$(dongle pick 2>/dev/tty)"
 
     if [ $? -eq 0 ] && [ -n "$chosen" ]; then
         if [ -z "$BUFFER" ]; then
@@ -43,25 +43,25 @@ bindkey "^]p" __dongle_widget  # Ctrl+] p fallback
 # Convenience shortcuts
 dg() {
     local chosen
-    chosen="$(dongle-pick 2>/dev/tty)"
+    chosen="$(dongle pick --query "$*" 2>/dev/tty)"
     [ $? -eq 0 ] && [ -n "$chosen" ] && cd "$chosen"
 }
 
 dgs() {
-    dongle-scan "$@"
+    dongle scan "$@"
 }
 
 dgw() {
     local chosen
-    chosen="$(dongle-pick --workspace </dev/tty 2>/dev/tty)"
+    chosen="$(dongle pick --workspace --query "$*" </dev/tty 2>/dev/tty)"
     [ $? -eq 0 ] && [ -n "$chosen" ] && cd "$chosen"
 }
 
 dgws() {
-    dongle-scan --workspace "$@"
+    dongle scan --workspace "$@"
 }
 
 # Auto pre-scan the current directory in the background on shell load
-(dongle-scan &>/dev/null &)
+(dongle scan &>/dev/null &)
 
 echo "  🔌 Dongle loaded. Press / on empty prompt, Ctrl+O anywhere, or type 'dg'"

@@ -11,7 +11,7 @@ __dongle_widget() {
 
     # Run picker, capture output
     local chosen
-    chosen="$(dongle-pick 2>/dev/tty)"
+    chosen="$(dongle pick 2>/dev/tty)"
 
     if [ $? -eq 0 ] && [ -n "$chosen" ]; then
         # If the line already has content, replace it or cd directly
@@ -46,20 +46,24 @@ bind -x '"/":__dongle_slash'
 bind -x '"":__dongle_widget'   # Ctrl+/
 
 # Convenience shortcuts
-alias dg='cd "$(dongle-pick)" && echo "  → $(pwd | sed "s|$HOME|~|")"'
-alias dgs='dongle-scan'
-alias dgw='cd "$(dongle-pick --workspace </dev/tty 2>/dev/tty)" && echo "  → $(pwd | sed "s|$HOME|~|")"'
-alias dgws='dongle-scan --workspace'
+dg() {
+    cd "$(dongle pick --query "$*" 2>/dev/tty)" && echo "  → $(pwd | sed "s|$HOME|~|")"
+}
+alias dgs='dongle scan'
+dgw() {
+    cd "$(dongle pick --workspace --query "$*" </dev/tty 2>/dev/tty)" && echo "  → $(pwd | sed "s|$HOME|~|")"
+}
+alias dgws='dongle scan --workspace'
 
 # Tab completion for dongle command
 _dongle_complete() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     COMPREPLY=($(compgen -d -- "$cur"))
 }
-complete -F _dongle_complete dongle-pick dongle-scan
+complete -F _dongle_complete dongle pick scan
 
 # Auto pre-scan the current directory in the background
-(dongle-scan &>/dev/null &)
+(dongle scan &>/dev/null &)
 
 echo "  🔌 Dongle loaded. Press / on empty prompt or Ctrl+/ anywhere."
 echo "  Also try: dg (launch picker)"
