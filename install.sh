@@ -53,17 +53,14 @@ log "Detected platform: ${BOLD}${PLATFORM}${RESET}"
 
 # ── Version helpers ───────────────────────────
 
-# Fetch the latest release tag from GitHub (returns e.g. "v0.3.0")
 get_latest_tag() {
     curl -sSL "https://api.github.com/repos/${REPO}/releases/latest" \
         | grep '"tag_name"' | head -1 \
         | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
 }
 
-# Strip leading "v" from a version string
 strip_v() { echo "${1#v}"; }
 
-# Get the currently installed version ("0.3.0"), or empty string if not installed
 get_installed_version() {
     if command -v dongle &>/dev/null; then
         dongle version 2>/dev/null | awk '{print $2}'
@@ -76,38 +73,28 @@ detect_install_type() {
         echo ""
         return
     fi
-    # pip-installed dongle can be detected via pip show
     local PYTHON=""
     for py in python3 python; do
-        if command -v "$py" &>/dev/null; then
-            PYTHON="$py"
-            break
-        fi
+        if command -v "$py" &>/dev/null; then PYTHON="$py"; break; fi
     done
     if [ -n "$PYTHON" ] && $PYTHON -m pip show dongle &>/dev/null 2>&1; then
         echo "pip"
         return
     fi
-    # Fall back to checking if it's in our binary install dir
     echo "binary"
 }
 
 # ── Install via pip ───────────────────────────
 install_via_pip() {
-    local mode="${1:-install}"   # "install" or "upgrade"
+    local mode="${1:-install}"
     header "$([ "$mode" = "upgrade" ] && echo "Upgrading via pip..." || echo "Installing via pip...")"
 
     local PYTHON=""
     for py in python3 python; do
-        if command -v "$py" &>/dev/null; then
-            PYTHON="$py"
-            break
-        fi
+        if command -v "$py" &>/dev/null; then PYTHON="$py"; break; fi
     done
 
-    if [ -z "$PYTHON" ]; then
-        return 1
-    fi
+    if [ -z "$PYTHON" ]; then return 1; fi
 
     local py_major py_minor
     py_major=$($PYTHON -c "import sys; print(sys.version_info.major)")
@@ -125,10 +112,9 @@ install_via_pip() {
 
     ok "Python $py_major.$py_minor with pip found"
 
-    local pip_flags="--upgrade"
-    if $PYTHON -m pip install $pip_flags --user dongle 2>/dev/null; then
+    if $PYTHON -m pip install --upgrade --user dongle 2>/dev/null; then
         ok "Dongle $([ "$mode" = "upgrade" ] && echo "upgraded" || echo "installed") via pip (user)"
-    elif $PYTHON -m pip install $pip_flags dongle 2>/dev/null; then
+    elif $PYTHON -m pip install --upgrade dongle 2>/dev/null; then
         ok "Dongle $([ "$mode" = "upgrade" ] && echo "upgraded" || echo "installed") via pip (system)"
     else
         warn "pip install failed. Falling back to binary."
@@ -147,32 +133,73 @@ install_via_pip() {
 install_via_binary() {
     local mode="${1:-install}"
     header "$([ "$mode" = "upgrade" ] && echo "Upgrading binary..." || echo "Installing standalone binary...")"
-    log "Downloading pre-built binary for ${PLATFORM}..."
+
+    # Map platform to the artifact name used by the CI release workflow
+    local artifact
+    case "$PLATFORM" in
+        darwin-arm64) artifact="dongle-darwin-arm64" ;;
+        darwin-x64)   artifact="dongle-darwin-x64"   ;;
+        linux-x64)    artifact="dongle-linux-x64"    ;;
+        linux-arm64)
+            warn "No pre-built binary for Linux ARM64 yet. Trying pip..."
+            return 1
+            ;;
+        *) error "No pre-built binary for platform: $PLATFORM" ;;
+    esac
 
     local latest_tag
     latest_tag=$(get_latest_tag)
-
     if [ -z "$latest_tag" ]; then
         error "Could not determine the latest release. Check https://github.com/${REPO}/releases"
     fi
-
     ok "Latest release: ${latest_tag}"
 
-    local binary_name="dongle"
-    local base_url="https://github.com/${REPO}/releases/download/${latest_tag}"
+    # The CI uploads platform-specific tarballs, e.g. dongle-darwin-arm64.tar.gz
+    local tarball="${artifact}.tar.gz"
+    local download_url="https://github.com/${REPO}/releases/download/${latest_tag}/${tarball}"
 
-    mkdir -p "$INSTALL_DIR"
-    cd "$INSTALL_DIR" || error "Failed to cd to $INSTALL_DIR"
+    log "Downloading ${tarball}..."
 
-    log "Downloading ${binary_name}..."
-    if ! curl -sSL -o "${binary_name}" "${base_url}/${binary_name}"; then
-        error "Failed to download binary. Check your internet connection."
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    trap "rm -rf '$tmp_dir'" EXIT
+
+    # Download and capture HTTP status code separately from the body
+    local http_code
+    http_code=$(curl -sSL -w "%{http_code}" -o "${tmp_dir}/${tarball}" "${download_url}")
+
+    if [ "$http_code" != "200" ]; then
+        error "Download failed (HTTP ${http_code}). No binary release found for ${artifact} at ${latest_tag}.
+         Check https://github.com/${REPO}/releases for available assets."
     fi
 
-    chmod +x "${binary_name}"
-    ok "Binary $([ "$mode" = "upgrade" ] && echo "upgraded" || echo "installed") at ${INSTALL_DIR}/${binary_name}"
+    # Sanity-check: make sure it's actually a gzip archive, not an HTML error page
+    if ! tar -tzf "${tmp_dir}/${tarball}" &>/dev/null; then
+        error "Downloaded file is not a valid archive. The release may not include pre-built binaries yet.
+         Try pip: pip install dongle"
+    fi
+
+    log "Extracting..."
+    tar -xzf "${tmp_dir}/${tarball}" -C "${tmp_dir}"
+
+    # Install: copy the extracted bundle to INSTALL_DIR
+    # The tarball contains a top-level directory named after the artifact
+    mkdir -p "$INSTALL_DIR"
+    cp -r "${tmp_dir}/${artifact}/"* "$INSTALL_DIR/"
+
+    # Ensure all entry-point binaries are executable
+    chmod +x \
+        "$INSTALL_DIR/dongle" \
+        "$INSTALL_DIR/dongle-pick" \
+        "$INSTALL_DIR/dongle-scan" \
+        "$INSTALL_DIR/dongle-list" 2>/dev/null || true
+
+    ok "Binary $([ "$mode" = "upgrade" ] && echo "upgraded" || echo "installed") at ${INSTALL_DIR}/dongle"
 
     add_to_path "$INSTALL_DIR"
+
+    trap - EXIT
+    rm -rf "$tmp_dir"
 }
 
 # ── Shell RC helpers ──────────────────────────
@@ -255,7 +282,7 @@ INSTALLED_VERSION=$(get_installed_version)
 INSTALL_TYPE=$(detect_install_type)
 
 if [ -n "$INSTALLED_VERSION" ]; then
-    # ── Already installed: check if an update is available ──
+    # ── Already installed: check for update ──
     log "Found existing install: dongle ${BOLD}${INSTALLED_VERSION}${RESET}"
     log "Checking for updates..."
 
@@ -280,7 +307,6 @@ if [ -n "$INSTALLED_VERSION" ]; then
     log "Update available: ${BOLD}v${INSTALLED_VERSION}${RESET} → ${GREEN}${BOLD}v${LATEST_VERSION}${RESET}"
     echo ""
 
-    # Upgrade using the same method as the original install
     if [ "$INSTALL_TYPE" = "pip" ]; then
         install_via_pip "upgrade" || install_via_binary "upgrade"
     else
