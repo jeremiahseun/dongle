@@ -37,8 +37,17 @@ def _read_shell_script(shell: str) -> str:
 
 def cmd_pick():
     """Interactive picker — prints chosen path to stdout."""
+    # In PyInstaller binary mode the picker lives in the co-installed dongle-pick
+    # binary (which has prompt_toolkit bundled). Delegate to it so the main
+    # dongle binary stays lightweight.
+    if hasattr(sys, '_MEIPASS'):
+        pick_bin = Path(sys.executable).parent / "dongle-pick"
+        if pick_bin.exists():
+            os.execv(str(pick_bin), [str(pick_bin)] + sys.argv[1:])
+        # dongle-pick not found alongside the binary — fall through to pip path
+
     import argparse
-    # Lazy: only loaded when actually picking
+    # Lazy: only loaded when actually picking (pip install mode)
     from dongle.utils import patch_asyncio
     from dongle.scanner import find_project_root, load_cache, scan_paths, CACHE_FILE
     from dongle.ui import run_picker

@@ -37,6 +37,7 @@ jobs:
 
       - name: Build standalone binaries
         run: |
+          # Picker binary — needs prompt_toolkit + pathspec bundled
           pyinstaller \
             --noconfirm \
             --name ${{ matrix.artifact }}-pick \
@@ -45,10 +46,12 @@ jobs:
             --hidden-import pathspec \
             dongle/main.py
 
+          # Main CLI binary — lightweight dispatcher; needs pathspec for dongle scan
           pyinstaller \
             --noconfirm \
             --name dongle \
             --add-data "dongle/shell:dongle/shell" \
+            --hidden-import pathspec \
             dongle/init_cmd.py
 
       - name: Create release bundle
