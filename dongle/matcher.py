@@ -5,14 +5,14 @@ _SEP = re.compile(r"[ /\\]+")
 _DISPLAY_LIMIT = 50   # keep top N candidates; we show at most 15
 
 
-def _score(q: str, q_segs: list, path_lower: str, path_len: int) -> int:
+def _score(q: str, q_segs_padded: list, path_lower: str, path_len: int) -> int:
     """
     Score a single path against a pre-processed query.
 
-    q         : lowercased full query string
-    q_segs    : query split on separators (computed once by caller)
-    path_lower: already-lowercased path
-    path_len  : len(original path)
+    q              : lowercased full query string
+    q_segs_padded  : query segments surrounded by '/' (e.g. ['/src/'])
+    path_lower     : already-lowercased path
+    path_len       : len(original path)
     """
     if q == path_lower:
         return 1_000_000
@@ -23,20 +23,19 @@ def _score(q: str, q_segs: list, path_lower: str, path_len: int) -> int:
     idx = path_lower.find(q)
     if idx >= 0:
         # Segment-exact bonus on top of substring score
-        if q_segs:
-            # path.split('/') is much faster than regex split for real paths
-            p_segs = path_lower.split("/")
-            for qs in q_segs:
-                if qs in p_segs:
+        if q_segs_padded:
+            path_padded = f"/{path_lower}/"
+            for qs in q_segs_padded:
+                if qs in path_padded:
                     score += 50_000
         score += 10_000 - idx
         return score
 
     # Segment-exact bonus (no full substring match)
-    if q_segs:
-        p_segs = path_lower.split("/")
-        for qs in q_segs:
-            if qs in p_segs:
+    if q_segs_padded:
+        path_padded = f"/{path_lower}/"
+        for qs in q_segs_padded:
+            if qs in path_padded:
                 score += 50_000
 
     # If we already have segment bonus points, return without fuzzy
@@ -44,11 +43,14 @@ def _score(q: str, q_segs: list, path_lower: str, path_len: int) -> int:
         return score
 
     # Fuzzy character-sequence match (most expensive, last resort)
-    it = iter(path_lower)
-    if all(c in it for c in q):
-        return 1_000 - path_len
+    curr_idx = 0
+    for c in q:
+        curr_idx = path_lower.find(c, curr_idx)
+        if curr_idx == -1:
+            return 0
+        curr_idx += 1
 
-    return 0
+    return 1_000 - path_len
 
 
 def search(query: str, paths: list, frecency: dict = None) -> list:
@@ -74,13 +76,13 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
         )
 
     q = query.lower()
-    q_segs = [s for s in _SEP.split(q) if s]
+    q_segs_padded = [f"/{s}/" for s in _SEP.split(q) if s]
 
     scored = []
     for p in paths:
         display = p[0] if isinstance(p, (tuple, list)) else p
         display_lower = display.lower()
-        s = _score(q, q_segs, display_lower, len(display))
+        s = _score(q, q_segs_padded, display_lower, len(display))
         if s > 0:
             if frecency:
                 full_path = p[1] if isinstance(p, (tuple, list)) else p
