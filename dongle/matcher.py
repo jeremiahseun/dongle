@@ -44,9 +44,15 @@ def _score(q: str, q_segs: list, path_lower: str, path_len: int) -> int:
         return score
 
     # Fuzzy character-sequence match (most expensive, last resort)
-    it = iter(path_lower)
-    if all(c in it for c in q):
-        return 1_000 - path_len
+    # Optimized: Using a stateful explicit loop instead of `all(c in iter for c in q)`
+    # avoids generator overhead and improves performance on fallback fuzzy matches.
+    char_idx = 0
+    q_len = len(q)
+    for c in path_lower:
+        if c == q[char_idx]:
+            char_idx += 1
+            if char_idx == q_len:
+                return 1_000 - path_len
 
     return 0
 
@@ -59,48 +65,60 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
     - Applies frecency boost when provided.
     - Returns paths sorted best-first.
     """
+    if not paths:
+        return []
+
+    # Optimized: Hoisting the isinstance check outside the loop avoids evaluating
+    # it thousands of times per keystroke during filtering and sorting.
+    is_tuple = isinstance(paths[0], (tuple, list))
+
     if not query:
         if frecency:
-            return sorted(
-                paths,
-                key=lambda p: (
-                    -frecency.get(p[1] if isinstance(p, (tuple, list)) else p, 0),
-                    len(p[0] if isinstance(p, (tuple, list)) else p),
-                ),
-            )
-        return sorted(
-            paths,
-            key=lambda p: len(p[0] if isinstance(p, (tuple, list)) else p),
-        )
+            if is_tuple:
+                return sorted(paths, key=lambda p: (-frecency.get(p[1], 0), len(p[0])))
+            else:
+                return sorted(paths, key=lambda p: (-frecency.get(p, 0), len(p)))
+        else:
+            if is_tuple:
+                return sorted(paths, key=lambda p: len(p[0]))
+            else:
+                return sorted(paths, key=len)
 
     q = query.lower()
     q_segs = [s for s in _SEP.split(q) if s]
 
     scored = []
-    for p in paths:
-        display = p[0] if isinstance(p, (tuple, list)) else p
-        display_lower = display.lower()
-        s = _score(q, q_segs, display_lower, len(display))
-        if s > 0:
-            if frecency:
-                full_path = p[1] if isinstance(p, (tuple, list)) else p
-                s += frecency.get(full_path, 0) * 10
-            scored.append((s, p))
+    if is_tuple:
+        for p in paths:
+            display = p[0]
+            s = _score(q, q_segs, display.lower(), len(display))
+            if s > 0:
+                if frecency:
+                    s += frecency.get(p[1], 0) * 10
+                scored.append((s, p))
+    else:
+        for p in paths:
+            s = _score(q, q_segs, p.lower(), len(p))
+            if s > 0:
+                if frecency:
+                    s += frecency.get(p, 0) * 10
+                scored.append((s, p))
+
+    if not scored:
+        return []
 
     # Partial sort: only need the top _DISPLAY_LIMIT entries
     if len(scored) > _DISPLAY_LIMIT:
-        top = heapq.nlargest(_DISPLAY_LIMIT, scored, key=lambda x: (
-            x[0],
-            -len(x[1][0] if isinstance(x[1], (tuple, list)) else x[1]),
-        ))
-        top.sort(key=lambda x: (
-            -x[0],
-            len(x[1][0] if isinstance(x[1], (tuple, list)) else x[1]),
-        ))
+        if is_tuple:
+            top = heapq.nlargest(_DISPLAY_LIMIT, scored, key=lambda x: (x[0], -len(x[1][0])))
+            top.sort(key=lambda x: (-x[0], len(x[1][0])))
+        else:
+            top = heapq.nlargest(_DISPLAY_LIMIT, scored, key=lambda x: (x[0], -len(x[1])))
+            top.sort(key=lambda x: (-x[0], len(x[1])))
         return [p for _, p in top]
 
-    scored.sort(key=lambda x: (
-        -x[0],
-        len(x[1][0] if isinstance(x[1], (tuple, list)) else x[1]),
-    ))
+    if is_tuple:
+        scored.sort(key=lambda x: (-x[0], len(x[1][0])))
+    else:
+        scored.sort(key=lambda x: (-x[0], len(x[1])))
     return [p for _, p in scored]
