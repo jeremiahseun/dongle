@@ -24,19 +24,19 @@ def _score(q: str, q_segs: list, path_lower: str, path_len: int) -> int:
     if idx >= 0:
         # Segment-exact bonus on top of substring score
         if q_segs:
-            # path.split('/') is much faster than regex split for real paths
-            p_segs = path_lower.split("/")
+            # Optimized: Avoid splitting the path by surrounding with separators
+            padded_path = f"/{path_lower}/"
             for qs in q_segs:
-                if qs in p_segs:
+                if f"/{qs}/" in padded_path:
                     score += 50_000
         score += 10_000 - idx
         return score
 
     # Segment-exact bonus (no full substring match)
     if q_segs:
-        p_segs = path_lower.split("/")
+        padded_path = f"/{path_lower}/"
         for qs in q_segs:
-            if qs in p_segs:
+            if f"/{qs}/" in padded_path:
                 score += 50_000
 
     # If we already have segment bonus points, return without fuzzy
