@@ -5,14 +5,14 @@ _SEP = re.compile(r"[ /\\]+")
 _DISPLAY_LIMIT = 50   # keep top N candidates; we show at most 15
 
 
-def _score(q: str, q_segs: list, path_lower: str, path_len: int) -> int:
+def _score(q: str, q_segs_wrapped: list, path_lower: str, path_len: int) -> int:
     """
     Score a single path against a pre-processed query.
 
-    q         : lowercased full query string
-    q_segs    : query split on separators (computed once by caller)
-    path_lower: already-lowercased path
-    path_len  : len(original path)
+    q              : lowercased full query string
+    q_segs_wrapped : query segments pre-wrapped with '/' for fast substring checks
+    path_lower     : already-lowercased path
+    path_len       : len(original path)
     """
     if q == path_lower:
         return 1_000_000
@@ -23,20 +23,20 @@ def _score(q: str, q_segs: list, path_lower: str, path_len: int) -> int:
     idx = path_lower.find(q)
     if idx >= 0:
         # Segment-exact bonus on top of substring score
-        if q_segs:
-            # path.split('/') is much faster than regex split for real paths
-            p_segs = path_lower.split("/")
-            for qs in q_segs:
-                if qs in p_segs:
+        # Optimized: Wrapping the path and segments in '/' avoids overhead from split()
+        if q_segs_wrapped:
+            path_wrapped = f"/{path_lower}/"
+            for qsw in q_segs_wrapped:
+                if qsw in path_wrapped:
                     score += 50_000
         score += 10_000 - idx
         return score
 
     # Segment-exact bonus (no full substring match)
-    if q_segs:
-        p_segs = path_lower.split("/")
-        for qs in q_segs:
-            if qs in p_segs:
+    if q_segs_wrapped:
+        path_wrapped = f"/{path_lower}/"
+        for qsw in q_segs_wrapped:
+            if qsw in path_wrapped:
                 score += 50_000
 
     # If we already have segment bonus points, return without fuzzy
@@ -86,19 +86,21 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
 
     q = query.lower()
     q_segs = [s for s in _SEP.split(q) if s]
+    # PRE-COMPUTE: wrapping query segments in '/' to allow fast substring check
+    q_segs_wrapped = [f"/{s}/" for s in q_segs]
 
     scored = []
     if is_tuple:
         for p in paths:
             display = p[0]
-            s = _score(q, q_segs, display.lower(), len(display))
+            s = _score(q, q_segs_wrapped, display.lower(), len(display))
             if s > 0:
                 if frecency:
                     s += frecency.get(p[1], 0) * 10
                 scored.append((s, p))
     else:
         for p in paths:
-            s = _score(q, q_segs, p.lower(), len(p))
+            s = _score(q, q_segs_wrapped, p.lower(), len(p))
             if s > 0:
                 if frecency:
                     s += frecency.get(p, 0) * 10
