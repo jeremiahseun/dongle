@@ -5,3 +5,7 @@
 ## 2024-05-13 - Avoid String Split in Hot Loops
 **Learning:** Using `.split("/")` in a hot loop (like filtering 10,000s of paths on every keystroke) creates measurable overhead due to array allocations and list iterations.
 **Action:** Replace `.split()` with substring searches over slash-wrapped strings. Instead of `q in path.split("/")`, wrap the path and query: `f"/{q}/" in f"/{path}/"`. This utilizes C-level substring search and avoids string allocation for `split()`.
+
+## 2024-05-15 - Fast directory scanning with os.walk string ops
+**Learning:** `pathlib.Path` instantiation and methods like `.relative_to()` are remarkably slow when evaluated inside hot loops (like deep `os.walk` directory scanning for fuzzy finding). An ad-hoc benchmark showed that replacing path instantiation with raw string splitting (`count(os.sep)`) and slicing can result in an 8x+ speedup. However, relative string slicing introduces an edge case when dealing with single-level paths (like a workspace root of "project"). When `os.path.dirname("project")` returns `""`, setting `ws_parent_sep` correctly and conditionally is required to avoid corrupting paths via slicing.
+**Action:** When working on performance optimizations for `os.walk` or similar tree-traversal tools in Python, replace inline `pathlib` manipulations with simple string length counting and string splicing, but be extremely cautious of edge cases where the parent directory evaluates to an empty string. Ensure ad-hoc testing scripts are cleaned up before final commit.

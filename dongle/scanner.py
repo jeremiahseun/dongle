@@ -39,38 +39,64 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
         max_depth = get_workspace_depth()
 
         for ws_dir in workspace_dirs:
-            ws_path = Path(ws_dir)
-            if not ws_path.exists():
+            if not os.path.exists(ws_dir):
                 continue
-            for curr_root, dirs, _files in os.walk(ws_path, topdown=True):
+
+            ws_norm = os.path.normpath(ws_dir)
+            ws_depth = ws_norm.count(os.sep)
+
+            ws_parent = os.path.dirname(ws_norm)
+            if not ws_parent:
+                ws_parent_norm = ""
+                ws_parent_sep = ""
+            else:
+                ws_parent_norm = os.path.normpath(ws_parent)
+                ws_parent_sep = ws_parent_norm + os.sep if not ws_parent_norm.endswith(os.sep) else ws_parent_norm
+
+            for curr_root, dirs, _files in os.walk(ws_norm, topdown=True):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-                rel_root = Path(curr_root).relative_to(ws_path.parent)
-                depth = len(Path(curr_root).relative_to(ws_path).parts)
+
+                # Optimized: depth calculation via string operations
+                depth = curr_root.count(os.sep) - ws_depth
+
+                # Optimized: relative path via string slicing
+                if ws_parent_norm and curr_root == ws_parent_norm:
+                    rel_root = "."
+                else:
+                    if ws_parent_sep:
+                        rel_root = curr_root[len(ws_parent_sep):]
+                    else:
+                        rel_root = curr_root
+
                 if depth <= max_depth:
-                    paths.append((str(rel_root), curr_root))
+                    paths.append((rel_root, curr_root))
                     if len(paths) >= max_dirs:
                         return paths
                 else:
                     dirs[:] = []
     else:
         ignore_spec = load_ignore_spec(root)
-        root_path = Path(root)
         max_depth = get_max_depth()
 
-        for curr_root, dirs, _files in os.walk(root_path, topdown=True):
+        root_norm = os.path.normpath(root)
+        root_sep = root_norm + os.sep if not root_norm.endswith(os.sep) else root_norm
+        root_depth = root_norm.count(os.sep)
+
+        for curr_root, dirs, _files in os.walk(root_norm, topdown=True):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-            rel_root = Path(curr_root).relative_to(root_path)
 
             # Stop recursing past max depth
-            depth = len(rel_root.parts)
+            # Optimized: depth calculation via string operations
+            depth = curr_root.count(os.sep) - root_depth
             if depth > max_depth:
                 dirs[:] = []
                 continue
 
-            if rel_root == Path("."):
+            # Optimized: relative path via string slicing
+            if curr_root == root_norm:
                 paths.append(".")
             else:
-                rel_str = str(rel_root)
+                rel_str = curr_root[len(root_sep):]
                 if not ignore_spec.match_file(rel_str):
                     paths.append(rel_str)
                 else:
