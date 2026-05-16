@@ -97,30 +97,25 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
             if s > 0:
                 if frecency:
                     s += frecency.get(p[1], 0) * 10
-                scored.append((s, p))
+                # Optimized: We embed the secondary sort key (-length) directly
+                # into the tuple to avoid lambda evaluation overhead in heapq.nlargest
+                scored.append((s, -len(display), p))
     else:
         for p in paths:
             s = _score(q, q_segs_wrapped, p.lower(), len(p))
             if s > 0:
                 if frecency:
                     s += frecency.get(p, 0) * 10
-                scored.append((s, p))
+                scored.append((s, -len(p), p))
 
     if not scored:
         return []
 
     # Partial sort: only need the top _DISPLAY_LIMIT entries
     if len(scored) > _DISPLAY_LIMIT:
-        if is_tuple:
-            top = heapq.nlargest(_DISPLAY_LIMIT, scored, key=lambda x: (x[0], -len(x[1][0])))
-            top.sort(key=lambda x: (-x[0], len(x[1][0])))
-        else:
-            top = heapq.nlargest(_DISPLAY_LIMIT, scored, key=lambda x: (x[0], -len(x[1])))
-            top.sort(key=lambda x: (-x[0], len(x[1])))
-        return [p for _, p in top]
+        top = heapq.nlargest(_DISPLAY_LIMIT, scored)
+        top.sort(key=lambda x: (-x[0], -x[1]))
+        return [p for _, _, p in top]
 
-    if is_tuple:
-        scored.sort(key=lambda x: (-x[0], len(x[1][0])))
-    else:
-        scored.sort(key=lambda x: (-x[0], len(x[1])))
-    return [p for _, p in scored]
+    scored.sort(key=lambda x: (-x[0], -x[1]))
+    return [p for _, _, p in scored]
