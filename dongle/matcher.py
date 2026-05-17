@@ -44,17 +44,15 @@ def _score(q: str, q_segs_wrapped: list, path_lower: str, path_len: int) -> int:
         return score
 
     # Fuzzy character-sequence match (most expensive, last resort)
-    # Optimized: Using a stateful explicit loop instead of `all(c in iter for c in q)`
-    # avoids generator overhead and improves performance on fallback fuzzy matches.
-    char_idx = 0
-    q_len = len(q)
-    for c in path_lower:
-        if c == q[char_idx]:
-            char_idx += 1
-            if char_idx == q_len:
-                return 1_000 - path_len
+    # Optimized: Using iterative `str.find()` instead of a manual character loop
+    # avoids Python-level loop overhead by performing C-level substring checks.
+    idx = -1
+    for c in q:
+        idx = path_lower.find(c, idx + 1)
+        if idx == -1:
+            return 0
 
-    return 0
+    return 1_000 - path_len
 
 
 def search(query: str, paths: list, frecency: dict = None) -> list:
