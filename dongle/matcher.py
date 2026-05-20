@@ -33,7 +33,9 @@ def _score(q: str, q_segs_wrapped: list, path_lower: str, path_len: int) -> int:
         return score
 
     # Segment-exact bonus (no full substring match)
-    if q_segs_wrapped:
+    # Optimized: If substring match failed, a single segment query cannot match
+    # a wrapped segment. We only need to check if there are multiple segments.
+    if len(q_segs_wrapped) > 1:
         path_wrapped = f"/{path_lower}/"
         for qsw in q_segs_wrapped:
             if qsw in path_wrapped:
@@ -89,20 +91,33 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
 
     scored = []
     if is_tuple:
-        for p in paths:
-            display = p[0]
-            s = _score(q, q_segs_wrapped, display.lower(), len(display))
-            if s > 0:
-                if frecency:
-                    s += frecency.get(p[1], 0) * 10
-                scored.append((s, p))
+        if frecency:
+            fget = frecency.get
+            for p in paths:
+                display = p[0]
+                s = _score(q, q_segs_wrapped, display.lower(), len(display))
+                if s > 0:
+                    s += fget(p[1], 0) * 10
+                    scored.append((s, p))
+        else:
+            for p in paths:
+                display = p[0]
+                s = _score(q, q_segs_wrapped, display.lower(), len(display))
+                if s > 0:
+                    scored.append((s, p))
     else:
-        for p in paths:
-            s = _score(q, q_segs_wrapped, p.lower(), len(p))
-            if s > 0:
-                if frecency:
-                    s += frecency.get(p, 0) * 10
-                scored.append((s, p))
+        if frecency:
+            fget = frecency.get
+            for p in paths:
+                s = _score(q, q_segs_wrapped, p.lower(), len(p))
+                if s > 0:
+                    s += fget(p, 0) * 10
+                    scored.append((s, p))
+        else:
+            for p in paths:
+                s = _score(q, q_segs_wrapped, p.lower(), len(p))
+                if s > 0:
+                    scored.append((s, p))
 
     if not scored:
         return []
