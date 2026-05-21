@@ -87,22 +87,34 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
     # PRE-COMPUTE: wrapping query segments in '/' to allow fast substring check
     q_segs_wrapped = [f"/{s}/" for s in q_segs]
 
-    scored = []
+    # Optimized: Use list comprehensions (C-optimized) instead of a manual loop with .append(),
+    # and hoist `if frecency:` outside the loop to avoid evaluating it per-path.
     if is_tuple:
-        for p in paths:
-            display = p[0]
-            s = _score(q, q_segs_wrapped, display.lower(), len(display))
-            if s > 0:
-                if frecency:
-                    s += frecency.get(p[1], 0) * 10
-                scored.append((s, p))
+        if frecency:
+            scored = [
+                (s + frecency.get(p[1], 0) * 10, p)
+                for p in paths
+                if (s := _score(q, q_segs_wrapped, p[0].lower(), len(p[0]))) > 0
+            ]
+        else:
+            scored = [
+                (s, p)
+                for p in paths
+                if (s := _score(q, q_segs_wrapped, p[0].lower(), len(p[0]))) > 0
+            ]
     else:
-        for p in paths:
-            s = _score(q, q_segs_wrapped, p.lower(), len(p))
-            if s > 0:
-                if frecency:
-                    s += frecency.get(p, 0) * 10
-                scored.append((s, p))
+        if frecency:
+            scored = [
+                (s + frecency.get(p, 0) * 10, p)
+                for p in paths
+                if (s := _score(q, q_segs_wrapped, p.lower(), len(p))) > 0
+            ]
+        else:
+            scored = [
+                (s, p)
+                for p in paths
+                if (s := _score(q, q_segs_wrapped, p.lower(), len(p))) > 0
+            ]
 
     if not scored:
         return []

@@ -9,3 +9,6 @@
 ## 2024-05-19 - Use C-optimized str.find for fuzzy matching instead of manual iteration
 **Learning:** In hot loops like `_score` for fuzzy path matching, using `str.find(c, idx + 1)` is significantly faster (approx. 40% faster) than a stateful python `for c in path_lower` loop because `find` is implemented in C.
 **Action:** When implementing character sequence matching (fuzzy finding), iterate over the query characters and use `str.find` on the target string rather than iterating over the target string in pure Python.
+## 2024-06-18 - Avoid Regex for Fuzzy Matching
+**Learning:** Attempting to optimize a manual loop in Python using greedy regular expressions (e.g., `s.*c.*u`) for fuzzy sequence matching introduces ReDoS vulnerabilities (algorithmic complexity explosion via catastrophic backtracking). Consecutive `str.find` calls are already C-optimized and run faster in strict $O(N)$ time.
+**Action:** Never use greedy regular expressions to optimize fuzzy matching loops. Always prefer native string operations like `str.find` or list comprehensions over loops with `.append()` in hot paths.
