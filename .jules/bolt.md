@@ -9,3 +9,7 @@
 ## 2024-05-19 - Use C-optimized str.find for fuzzy matching instead of manual iteration
 **Learning:** In hot loops like `_score` for fuzzy path matching, using `str.find(c, idx + 1)` is significantly faster (approx. 40% faster) than a stateful python `for c in path_lower` loop because `find` is implemented in C.
 **Action:** When implementing character sequence matching (fuzzy finding), iterate over the query characters and use `str.find` on the target string rather than iterating over the target string in pure Python.
+
+## 2024-05-20 - Replace `for` loop `append` with List Comprehensions + Walrus Operator
+**Learning:** In the hot path of filtering and scoring thousands of paths, manual `for` loops with `.append()` calls have measurable overhead due to repeated method resolution and function calls.
+**Action:** Use list comprehensions combined with the walrus operator (`:=`) to assign and filter in a single pass. This pushes the list construction down to C-level execution in CPython and improves performance.
