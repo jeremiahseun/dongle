@@ -9,3 +9,6 @@
 ## 2024-05-19 - Use C-optimized str.find for fuzzy matching instead of manual iteration
 **Learning:** In hot loops like `_score` for fuzzy path matching, using `str.find(c, idx + 1)` is significantly faster (approx. 40% faster) than a stateful python `for c in path_lower` loop because `find` is implemented in C.
 **Action:** When implementing character sequence matching (fuzzy finding), iterate over the query characters and use `str.find` on the target string rather than iterating over the target string in pure Python.
+## 2024-05-24 - Python lambda sorting overhead
+**Learning:** In hot sorting paths (like `heapq.nlargest` or `list.sort()`), passing a `key=lambda...` incurs severe function call overhead per comparison. Python natively sorts tuples element-by-element much faster in C.
+**Action:** When a custom sort order is needed, pre-compute the sort criteria and insert them directly into the tuple (e.g., negating lengths to reverse the sort order: `(score, -length, item)`) to leverage Python's default C-level tuple comparison and avoid lambdas completely.
