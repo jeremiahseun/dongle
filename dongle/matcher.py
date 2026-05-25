@@ -87,38 +87,37 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
     # PRE-COMPUTE: wrapping query segments in '/' to allow fast substring check
     q_segs_wrapped = [f"/{s}/" for s in q_segs]
 
+    fget = frecency.get if frecency else None
+
     scored = []
     if is_tuple:
         for p in paths:
             display = p[0]
-            s = _score(q, q_segs_wrapped, display.lower(), len(display))
+            d_len = len(display)
+            s = _score(q, q_segs_wrapped, display.lower(), d_len)
             if s > 0:
-                if frecency:
-                    s += frecency.get(p[1], 0) * 10
-                scored.append((s, p))
+                if fget:
+                    s += fget(p[1], 0) * 10
+                # native tuple for sorting: (score, -length, item)
+                scored.append((s, -d_len, p))
     else:
         for p in paths:
-            s = _score(q, q_segs_wrapped, p.lower(), len(p))
+            p_len = len(p)
+            s = _score(q, q_segs_wrapped, p.lower(), p_len)
             if s > 0:
-                if frecency:
-                    s += frecency.get(p, 0) * 10
-                scored.append((s, p))
+                if fget:
+                    s += fget(p, 0) * 10
+                # native tuple for sorting: (score, -length, item)
+                scored.append((s, -p_len, p))
 
     if not scored:
         return []
 
     # Partial sort: only need the top _DISPLAY_LIMIT entries
     if len(scored) > _DISPLAY_LIMIT:
-        if is_tuple:
-            top = heapq.nlargest(_DISPLAY_LIMIT, scored, key=lambda x: (x[0], -len(x[1][0])))
-            top.sort(key=lambda x: (-x[0], len(x[1][0])))
-        else:
-            top = heapq.nlargest(_DISPLAY_LIMIT, scored, key=lambda x: (x[0], -len(x[1])))
-            top.sort(key=lambda x: (-x[0], len(x[1])))
-        return [p for _, p in top]
+        top = heapq.nlargest(_DISPLAY_LIMIT, scored)
+        top.sort(reverse=True)
+        return [p for _, _, p in top]
 
-    if is_tuple:
-        scored.sort(key=lambda x: (-x[0], len(x[1][0])))
-    else:
-        scored.sort(key=lambda x: (-x[0], len(x[1])))
-    return [p for _, p in scored]
+    scored.sort(reverse=True)
+    return [p for _, _, p in scored]
