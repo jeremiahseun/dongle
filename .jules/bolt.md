@@ -9,3 +9,7 @@
 ## 2024-05-19 - Use C-optimized str.find for fuzzy matching instead of manual iteration
 **Learning:** In hot loops like `_score` for fuzzy path matching, using `str.find(c, idx + 1)` is significantly faster (approx. 40% faster) than a stateful python `for c in path_lower` loop because `find` is implemented in C.
 **Action:** When implementing character sequence matching (fuzzy finding), iterate over the query characters and use `str.find` on the target string rather than iterating over the target string in pure Python.
+
+## 2024-05-18 - Tuple Sorting TypeError Bug
+**Learning:** Using element-by-element tuple comparison in `.sort()` or `heapq` without lambdas can raise a `TypeError` if there's a tie in the initial elements and the engine falls back to comparing an unorderable object.
+**Action:** Always insert a unique tie-breaker integer (like from `enumerate`) into the tuple to guarantee the unorderable object is never evaluated during comparisons.
