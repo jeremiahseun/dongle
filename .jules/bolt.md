@@ -9,3 +9,7 @@
 ## 2024-05-19 - Use C-optimized str.find for fuzzy matching instead of manual iteration
 **Learning:** In hot loops like `_score` for fuzzy path matching, using `str.find(c, idx + 1)` is significantly faster (approx. 40% faster) than a stateful python `for c in path_lower` loop because `find` is implemented in C.
 **Action:** When implementing character sequence matching (fuzzy finding), iterate over the query characters and use `str.find` on the target string rather than iterating over the target string in pure Python.
+
+## 2026-05-27 - Pre-fetching methods and caching properties in hot loops
+**Learning:** In hot loops in Python, dictionary and attribute lookups add overhead. Caching function/method lookups (like `fget = frecency.get`, `_score_local = _score`, `_append = scored.append`) and caching string property results (like `len()` and `.lower()`) before and during loop evaluations reduces redundancy and overhead. List comprehensions were attempted but did not yield further performance improvements over explicit for-loops with pre-fetched append methods due to internal conditional checks.
+**Action:** When a method or property is called repeatedly in a hot loop on static variables or across static iterations, bind it to a local variable or pre-calculate it to bypass object inspection overhead.

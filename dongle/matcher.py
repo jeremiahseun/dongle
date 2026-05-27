@@ -88,21 +88,46 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
     q_segs_wrapped = [f"/{s}/" for s in q_segs]
 
     scored = []
+    # Optimized: Cache function references locally to reduce dictionary lookups
+    # in the hot loop. Also, cache `len()` and `lower()` since they are used
+    # heavily during evaluation.
+    _score_local = _score
+    _append = scored.append
+
     if is_tuple:
-        for p in paths:
-            display = p[0]
-            s = _score(q, q_segs_wrapped, display.lower(), len(display))
-            if s > 0:
-                if frecency:
-                    s += frecency.get(p[1], 0) * 10
-                scored.append((s, p))
+        if frecency:
+            fget = frecency.get
+            for p in paths:
+                display = p[0]
+                d_lower = display.lower()
+                p_len = len(display)
+                s = _score_local(q, q_segs_wrapped, d_lower, p_len)
+                if s > 0:
+                    _append((s + fget(p[1], 0) * 10, p))
+        else:
+            for p in paths:
+                display = p[0]
+                d_lower = display.lower()
+                p_len = len(display)
+                s = _score_local(q, q_segs_wrapped, d_lower, p_len)
+                if s > 0:
+                    _append((s, p))
     else:
-        for p in paths:
-            s = _score(q, q_segs_wrapped, p.lower(), len(p))
-            if s > 0:
-                if frecency:
-                    s += frecency.get(p, 0) * 10
-                scored.append((s, p))
+        if frecency:
+            fget = frecency.get
+            for p in paths:
+                p_lower = p.lower()
+                p_len = len(p)
+                s = _score_local(q, q_segs_wrapped, p_lower, p_len)
+                if s > 0:
+                    _append((s + fget(p, 0) * 10, p))
+        else:
+            for p in paths:
+                p_lower = p.lower()
+                p_len = len(p)
+                s = _score_local(q, q_segs_wrapped, p_lower, p_len)
+                if s > 0:
+                    _append((s, p))
 
     if not scored:
         return []
