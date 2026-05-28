@@ -66,9 +66,8 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
     if not paths:
         return []
 
-    # Optimized: Hoisting the isinstance check outside the loop avoids evaluating
-    # it thousands of times per keystroke during filtering and sorting.
-    is_tuple = isinstance(paths[0], (tuple, list))
+    # Optimized: Using type() over isinstance for a slight speed bump in hot loops
+    is_tuple = type(paths[0]) in (tuple, list)
 
     if not query:
         if frecency:
@@ -88,37 +87,56 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
     q_segs_wrapped = [f"/{s}/" for s in q_segs]
 
     scored = []
+
+    # Pre-fetch methods into local variables
+    _score_local = _score
+    _append = scored.append
+    if frecency:
+        fget = frecency.get
+
+    # Structure tuples explicitly for native sorting to avoid expensive `lambda` keys.
+    # We use `(-score, length, i, p)` which automatically sorts best-first without a key function.
+    # The index `i` is added to prevent `TypeError`s when ties evaluate unorderable trailing objects.
     if is_tuple:
-        for p in paths:
-            display = p[0]
-            s = _score(q, q_segs_wrapped, display.lower(), len(display))
-            if s > 0:
-                if frecency:
-                    s += frecency.get(p[1], 0) * 10
-                scored.append((s, p))
+        if frecency:
+            for i, p in enumerate(paths):
+                display = p[0]
+                d_len = len(display)
+                s = _score_local(q, q_segs_wrapped, display.lower(), d_len)
+                if s > 0:
+                    s += fget(p[1], 0) * 10
+                    _append((-s, d_len, i, p))
+        else:
+            for i, p in enumerate(paths):
+                display = p[0]
+                d_len = len(display)
+                s = _score_local(q, q_segs_wrapped, display.lower(), d_len)
+                if s > 0:
+                    _append((-s, d_len, i, p))
     else:
-        for p in paths:
-            s = _score(q, q_segs_wrapped, p.lower(), len(p))
-            if s > 0:
-                if frecency:
-                    s += frecency.get(p, 0) * 10
-                scored.append((s, p))
+        if frecency:
+            for i, p in enumerate(paths):
+                p_len = len(p)
+                s = _score_local(q, q_segs_wrapped, p.lower(), p_len)
+                if s > 0:
+                    s += fget(p, 0) * 10
+                    _append((-s, p_len, i, p))
+        else:
+            for i, p in enumerate(paths):
+                p_len = len(p)
+                s = _score_local(q, q_segs_wrapped, p.lower(), p_len)
+                if s > 0:
+                    _append((-s, p_len, i, p))
 
     if not scored:
         return []
 
     # Partial sort: only need the top _DISPLAY_LIMIT entries
+    # Using `nsmallest` instead of `nlargest` because scores are already negated.
+    # No `key` lambda required because the tuples are intrinsically ordered correctly.
     if len(scored) > _DISPLAY_LIMIT:
-        if is_tuple:
-            top = heapq.nlargest(_DISPLAY_LIMIT, scored, key=lambda x: (x[0], -len(x[1][0])))
-            top.sort(key=lambda x: (-x[0], len(x[1][0])))
-        else:
-            top = heapq.nlargest(_DISPLAY_LIMIT, scored, key=lambda x: (x[0], -len(x[1])))
-            top.sort(key=lambda x: (-x[0], len(x[1])))
-        return [p for _, p in top]
+        top = heapq.nsmallest(_DISPLAY_LIMIT, scored)
+        return [p for _, _, _, p in top]
 
-    if is_tuple:
-        scored.sort(key=lambda x: (-x[0], len(x[1][0])))
-    else:
-        scored.sort(key=lambda x: (-x[0], len(x[1])))
-    return [p for _, p in scored]
+    scored.sort()
+    return [p for _, _, _, p in scored]
