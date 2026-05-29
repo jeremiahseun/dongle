@@ -5,6 +5,7 @@ setup.py
 dongle/__init__.py
 dongle/cli.py
 dongle/config.py
+dongle/frecency.py
 dongle/init_cmd.py
 dongle/main.py
 dongle/matcher.py

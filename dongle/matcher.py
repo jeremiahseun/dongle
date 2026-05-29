@@ -72,10 +72,12 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
 
     if not query:
         if frecency:
+            fget = frecency.get
             if is_tuple:
-                return sorted(paths, key=lambda p: (-frecency.get(p[1], 0), len(p[0])))
+                # Optimized: bound method in lambda to avoid attribute lookup overhead
+                return sorted(paths, key=lambda p: (-fget(p[1], 0), len(p[0])))
             else:
-                return sorted(paths, key=lambda p: (-frecency.get(p, 0), len(p)))
+                return sorted(paths, key=lambda p: (-fget(p, 0), len(p)))
         else:
             if is_tuple:
                 return sorted(paths, key=lambda p: len(p[0]))
@@ -88,37 +90,38 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
     q_segs_wrapped = [f"/{s}/" for s in q_segs]
 
     scored = []
+    _score_local = _score
+    _append = scored.append
+    fget = frecency.get if frecency else None
+
+    # Optimized: Constructing natively sortable tuples (score, -len, -i, item)
+    # eliminates need for expensive lambda functions in sorting/heapq operations.
     if is_tuple:
-        for p in paths:
+        for i, p in enumerate(paths):
             display = p[0]
-            s = _score(q, q_segs_wrapped, display.lower(), len(display))
+            d_len = len(display)
+            s = _score_local(q, q_segs_wrapped, display.lower(), d_len)
             if s > 0:
-                if frecency:
-                    s += frecency.get(p[1], 0) * 10
-                scored.append((s, p))
+                if fget:
+                    s += fget(p[1], 0) * 10
+                _append((s, -d_len, -i, p))
     else:
-        for p in paths:
-            s = _score(q, q_segs_wrapped, p.lower(), len(p))
+        for i, p in enumerate(paths):
+            p_len = len(p)
+            s = _score_local(q, q_segs_wrapped, p.lower(), p_len)
             if s > 0:
-                if frecency:
-                    s += frecency.get(p, 0) * 10
-                scored.append((s, p))
+                if fget:
+                    s += fget(p, 0) * 10
+                _append((s, -p_len, -i, p))
 
     if not scored:
         return []
 
     # Partial sort: only need the top _DISPLAY_LIMIT entries
     if len(scored) > _DISPLAY_LIMIT:
-        if is_tuple:
-            top = heapq.nlargest(_DISPLAY_LIMIT, scored, key=lambda x: (x[0], -len(x[1][0])))
-            top.sort(key=lambda x: (-x[0], len(x[1][0])))
-        else:
-            top = heapq.nlargest(_DISPLAY_LIMIT, scored, key=lambda x: (x[0], -len(x[1])))
-            top.sort(key=lambda x: (-x[0], len(x[1])))
-        return [p for _, p in top]
+        top = heapq.nlargest(_DISPLAY_LIMIT, scored)
+        top.sort(reverse=True)
+        return [p for _, _, _, p in top]
 
-    if is_tuple:
-        scored.sort(key=lambda x: (-x[0], len(x[1][0])))
-    else:
-        scored.sort(key=lambda x: (-x[0], len(x[1])))
-    return [p for _, p in scored]
+    scored.sort(reverse=True)
+    return [p for _, _, _, p in scored]
