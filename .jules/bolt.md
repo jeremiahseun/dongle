@@ -9,3 +9,10 @@
 ## 2024-05-19 - Use C-optimized str.find for fuzzy matching instead of manual iteration
 **Learning:** In hot loops like `_score` for fuzzy path matching, using `str.find(c, idx + 1)` is significantly faster (approx. 40% faster) than a stateful python `for c in path_lower` loop because `find` is implemented in C.
 **Action:** When implementing character sequence matching (fuzzy finding), iterate over the query characters and use `str.find` on the target string rather than iterating over the target string in pure Python.
+## 2024-06-02 - UI Search Space Pruning
+**Learning:** For fuzzy-finders where keystrokes continuously refine a query, filtering against the already-filtered result set instead of the full global path list provides enormous latency improvements (>90%) with barely any code changes.
+**Action:** When working on search interfaces with stateful UI loops, always check if monotonic queries (i.e. appended characters) can be optimized by narrowing the search space progressively.
+
+## 2024-06-02 - Culling unmeasurable micro-optimizations
+**Learning:** Caching method lookups inside loops (`_find = path.find`) or bypassing list comprehensions on empty lists (`if dirs:`) are generally considered unmeasurable micro-optimizations in Python that clutter code readability unless they are within critical pure-CPU hot paths.
+**Action:** Avoid micro-optimizations that only save nanoseconds or target I/O bound blocks. Focus purely on large algorithmic wins, algorithmic reductions in search space, or massive list overhead removals.

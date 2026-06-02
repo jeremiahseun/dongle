@@ -43,7 +43,8 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
             if not ws_path.exists():
                 continue
             for curr_root, dirs, _files in os.walk(ws_path, topdown=True):
-                dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+                if dirs:
+                    dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
                 rel_root = Path(curr_root).relative_to(ws_path.parent)
                 depth = len(Path(curr_root).relative_to(ws_path).parts)
                 if depth <= max_depth:
@@ -58,7 +59,8 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
         max_depth = get_max_depth()
 
         for curr_root, dirs, _files in os.walk(root_path, topdown=True):
-            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            if dirs:
+                dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
             rel_root = Path(curr_root).relative_to(root_path)
 
             # Stop recursing past max depth
