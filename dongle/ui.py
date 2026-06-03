@@ -12,7 +12,7 @@ def run_picker(root, paths, is_workspace=False, cwd=None, initial_query=""):
     from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.styles import Style
 
-    from dongle.matcher import search
+    from dongle.matcher import search, _DISPLAY_LIMIT
     from dongle.scanner import scan_paths, save_cache, find_project_root, CACHE_FILE
     from dongle.frecency import get_frecency_scores
 
@@ -94,8 +94,19 @@ def run_picker(root, paths, is_workspace=False, cwd=None, initial_query=""):
     @kb.add(Keys.Any)
     def _type(event):
         if event.data and len(event.data) == 1 and event.data.isprintable():
+            old_query = state["query"]
             state["query"] += event.data
-            state["filtered"] = search(state["query"], state["paths"], frecency)
+
+            # Progressive filtering: if the previous query already filtered down to less
+            # than the display limit (50), we know we have all possible matches in the
+            # filtered list. We can safely search against that smaller list instead of
+            # the full path list for a massive speedup on subsequent keystrokes.
+            if old_query and len(state["filtered"]) < _DISPLAY_LIMIT:
+                paths_to_search = state["filtered"]
+            else:
+                paths_to_search = state["paths"]
+
+            state["filtered"] = search(state["query"], paths_to_search, frecency)
             state["index"] = 0
             event.app.invalidate()
 
