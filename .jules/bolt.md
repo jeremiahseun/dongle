@@ -16,3 +16,6 @@
 ## 2024-05-20 - Safe Progressive Filtering in TUI
 **Learning:** Progressive filtering (searching within the previously filtered subset instead of all paths) is extremely effective for fuzzy finders, reducing search time exponentially on subsequent keystrokes. However, if the underlying search function truncates results (e.g., to a `_DISPLAY_LIMIT`), applying progressive filtering to the truncated list will cause correct matches to be missed.
 **Action:** When implementing progressive filtering, conditionally verify that the previous search result was **not** truncated (e.g., `len(state["filtered"]) < _DISPLAY_LIMIT`) before safely using it as the new input space.
+## 2024-05-19 - Avoid Pathlib overhead in os.walk loops
+**Learning:** Instantiating `pathlib.Path` objects and calling `.relative_to()` inside IO-bound hot loops like `os.walk` introduces significant overhead and can slow down directory scanning.
+**Action:** Replace `pathlib` operations with direct string slicing (e.g., `curr_root[root_len:]`) and standard `os.path` operations. Pre-compute path string lengths before the loop, handle the `"."` parent edge case, and use `count(os.sep)` for depth checks to drastically improve performance.

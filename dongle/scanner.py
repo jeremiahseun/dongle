@@ -42,12 +42,40 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
             ws_path = Path(ws_dir)
             if not ws_path.exists():
                 continue
+
+            # Optimized: Pre-compute string lengths and avoid instantiating pathlib.Path
+            # inside the os.walk hot loop. This drastically reduces overhead.
+            ws_path_str = str(ws_path)
+            # Ensure trailing slash for accurate prefix removal
+            if not ws_path_str.endswith(os.sep):
+                ws_path_str += os.sep
+            ws_len = len(ws_path_str)
+
+            # If the path is a simple relative path like "apps", parent is "."
+            # We only need to strip a parent prefix if it's not "."
+            ws_parent = ws_path.parent
+            if str(ws_parent) == ".":
+                parent_len = 0
+            else:
+                ws_parent_str = str(ws_parent)
+                if not ws_parent_str.endswith(os.sep):
+                    ws_parent_str += os.sep
+                parent_len = len(ws_parent_str)
+
             for curr_root, dirs, _files in os.walk(ws_path, topdown=True):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-                rel_root = Path(curr_root).relative_to(ws_path.parent)
-                depth = len(Path(curr_root).relative_to(ws_path).parts)
+
+                # Optimized string slicing instead of Path.relative_to
+                if curr_root == str(ws_path):
+                    rel_root_str = curr_root[parent_len:] if parent_len else curr_root
+                    depth = 0
+                else:
+                    rel_root_str = curr_root[parent_len:] if parent_len else curr_root
+                    # Compute depth directly from the relative string
+                    depth = curr_root[ws_len:].count(os.sep) + 1
+
                 if depth <= max_depth:
-                    paths.append((str(rel_root), curr_root))
+                    paths.append((rel_root_str, curr_root))
                     if len(paths) >= max_dirs:
                         return paths
                 else:
@@ -57,20 +85,31 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
         root_path = Path(root)
         max_depth = get_max_depth()
 
+        # Optimized: Pre-compute root string length for slicing to bypass Path overhead
+        root_path_str = str(root_path)
+        if not root_path_str.endswith(os.sep):
+            root_path_str += os.sep
+        root_len = len(root_path_str)
+
         for curr_root, dirs, _files in os.walk(root_path, topdown=True):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-            rel_root = Path(curr_root).relative_to(root_path)
+
+            # Optimized string slicing instead of Path.relative_to
+            if curr_root == str(root_path):
+                rel_str = "."
+                depth = 0
+            else:
+                rel_str = curr_root[root_len:]
+                depth = rel_str.count(os.sep) + 1
 
             # Stop recursing past max depth
-            depth = len(rel_root.parts)
             if depth > max_depth:
                 dirs[:] = []
                 continue
 
-            if rel_root == Path("."):
+            if rel_str == ".":
                 paths.append(".")
             else:
-                rel_str = str(rel_root)
                 if not ignore_spec.match_file(rel_str):
                     paths.append(rel_str)
                 else:
