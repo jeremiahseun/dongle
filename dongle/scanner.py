@@ -39,38 +39,66 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
         max_depth = get_workspace_depth()
 
         for ws_dir in workspace_dirs:
-            ws_path = Path(ws_dir)
-            if not ws_path.exists():
+            if not os.path.exists(ws_dir):
                 continue
-            for curr_root, dirs, _files in os.walk(ws_path, topdown=True):
+
+            # Optimized: avoid `pathlib.Path` instantiation and `.relative_to` in hot loops.
+            # Calculate root norms and string lengths to use C-optimized string slicing instead.
+            ws_norm = os.path.normpath(ws_dir)
+            ws_len = len(ws_norm)
+            if not ws_norm.endswith(os.sep):
+                ws_len += 1
+
+            parent_dir = os.path.dirname(ws_norm)
+            parent_len = len(parent_dir)
+            if parent_dir and not parent_dir.endswith(os.sep):
+                parent_len += 1
+
+            for curr_root, dirs, _files in os.walk(ws_dir, topdown=True):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-                rel_root = Path(curr_root).relative_to(ws_path.parent)
-                depth = len(Path(curr_root).relative_to(ws_path).parts)
+
+                if curr_root == ws_norm:
+                    depth = 0
+                    rel_root = os.path.basename(ws_norm) if parent_dir else curr_root
+                else:
+                    rel_str = curr_root[ws_len:]
+                    depth = rel_str.count(os.sep) + 1
+                    rel_root = curr_root[parent_len:] if parent_dir else curr_root
+
                 if depth <= max_depth:
-                    paths.append((str(rel_root), curr_root))
+                    paths.append((rel_root, curr_root))
                     if len(paths) >= max_dirs:
                         return paths
                 else:
                     dirs[:] = []
     else:
         ignore_spec = load_ignore_spec(root)
-        root_path = Path(root)
         max_depth = get_max_depth()
 
-        for curr_root, dirs, _files in os.walk(root_path, topdown=True):
+        # Optimized: avoid `pathlib.Path` instantiation and `.relative_to` in hot loops.
+        root_norm = os.path.normpath(root)
+        root_len = len(root_norm)
+        if not root_norm.endswith(os.sep):
+            root_len += 1
+
+        for curr_root, dirs, _files in os.walk(root, topdown=True):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-            rel_root = Path(curr_root).relative_to(root_path)
+
+            if curr_root == root_norm:
+                depth = 0
+                rel_str = "."
+            else:
+                rel_str = curr_root[root_len:]
+                depth = rel_str.count(os.sep) + 1
 
             # Stop recursing past max depth
-            depth = len(rel_root.parts)
             if depth > max_depth:
                 dirs[:] = []
                 continue
 
-            if rel_root == Path("."):
+            if rel_str == ".":
                 paths.append(".")
             else:
-                rel_str = str(rel_root)
                 if not ignore_spec.match_file(rel_str):
                     paths.append(rel_str)
                 else:
