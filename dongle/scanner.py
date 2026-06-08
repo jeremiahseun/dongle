@@ -42,35 +42,59 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
             ws_path = Path(ws_dir)
             if not ws_path.exists():
                 continue
-            for curr_root, dirs, _files in os.walk(ws_path, topdown=True):
+
+            # Optimized: Replace slow `pathlib.Path` instantiation and `.relative_to()`
+            # calls inside the IO-bound os.walk loop with direct C-level string slicing
+            # and count() operations. This provides massive speedups when walking deep trees.
+            ws_str = ws_dir if ws_dir.endswith(os.sep) else ws_dir + os.sep
+            ws_len = len(ws_str)
+            ws_basename = os.path.basename(os.path.abspath(ws_dir).rstrip(os.sep))
+
+            for curr_root, dirs, _files in os.walk(ws_dir, topdown=True):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-                rel_root = Path(curr_root).relative_to(ws_path.parent)
-                depth = len(Path(curr_root).relative_to(ws_path).parts)
+
+                if curr_root == ws_dir or curr_root == ws_dir.rstrip(os.sep):
+                    rel_str = ""
+                    depth = 0
+                else:
+                    rel_str = curr_root[ws_len:]
+                    depth = rel_str.count(os.sep) + 1
+
                 if depth <= max_depth:
-                    paths.append((str(rel_root), curr_root))
+                    rel_root_str = f"{ws_basename}{os.sep}{rel_str}" if rel_str else ws_basename
+                    paths.append((rel_root_str, curr_root))
                     if len(paths) >= max_dirs:
                         return paths
                 else:
                     dirs[:] = []
     else:
         ignore_spec = load_ignore_spec(root)
-        root_path = Path(root)
         max_depth = get_max_depth()
 
-        for curr_root, dirs, _files in os.walk(root_path, topdown=True):
+        # Optimized: Replace slow `pathlib.Path` instantiation and `.relative_to()`
+        # calls inside the IO-bound os.walk loop with direct C-level string slicing
+        # and count() operations. This provides massive speedups when walking deep trees.
+        root_str = root if root.endswith(os.sep) else root + os.sep
+        root_len = len(root_str)
+
+        for curr_root, dirs, _files in os.walk(root, topdown=True):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-            rel_root = Path(curr_root).relative_to(root_path)
+
+            if curr_root == root or curr_root == root.rstrip(os.sep):
+                rel_str = "."
+                depth = 0
+            else:
+                rel_str = curr_root[root_len:]
+                depth = rel_str.count(os.sep) + 1
 
             # Stop recursing past max depth
-            depth = len(rel_root.parts)
             if depth > max_depth:
                 dirs[:] = []
                 continue
 
-            if rel_root == Path("."):
+            if rel_str == ".":
                 paths.append(".")
             else:
-                rel_str = str(rel_root)
                 if not ignore_spec.match_file(rel_str):
                     paths.append(rel_str)
                 else:
