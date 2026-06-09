@@ -42,12 +42,27 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
             ws_path = Path(ws_dir)
             if not ws_path.exists():
                 continue
+
+            ws_str = str(ws_path)
+            if not ws_str.endswith(os.sep):
+                ws_str += os.sep
+            ws_len = len(ws_str)
+            ws_path_name = ws_path.name
+
             for curr_root, dirs, _files in os.walk(ws_path, topdown=True):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-                rel_root = Path(curr_root).relative_to(ws_path.parent)
-                depth = len(Path(curr_root).relative_to(ws_path).parts)
+
+                # Optimized: avoid pathlib.Path instantiations in hot loop
+                if curr_root == str(ws_path):
+                    depth = 0
+                    rel_root_str = ws_path_name
+                else:
+                    rel_ws_str = curr_root[ws_len:]
+                    depth = rel_ws_str.count(os.sep) + 1
+                    rel_root_str = os.path.join(ws_path_name, rel_ws_str)
+
                 if depth <= max_depth:
-                    paths.append((str(rel_root), curr_root))
+                    paths.append((rel_root_str, curr_root))
                     if len(paths) >= max_dirs:
                         return paths
                 else:
@@ -57,20 +72,31 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
         root_path = Path(root)
         max_depth = get_max_depth()
 
+        root_str = str(root_path)
+        if not root_str.endswith(os.sep):
+            root_str += os.sep
+        root_len = len(root_str)
+        root_str_no_sep = str(root_path)
+
         for curr_root, dirs, _files in os.walk(root_path, topdown=True):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-            rel_root = Path(curr_root).relative_to(root_path)
+
+            # Optimized: avoid pathlib.Path instantiations in hot loop
+            if curr_root == root_str_no_sep:
+                depth = 0
+                rel_str = "."
+            else:
+                rel_str = curr_root[root_len:]
+                depth = rel_str.count(os.sep) + 1
 
             # Stop recursing past max depth
-            depth = len(rel_root.parts)
             if depth > max_depth:
                 dirs[:] = []
                 continue
 
-            if rel_root == Path("."):
+            if rel_str == ".":
                 paths.append(".")
             else:
-                rel_str = str(rel_root)
                 if not ignore_spec.match_file(rel_str):
                     paths.append(rel_str)
                 else:
