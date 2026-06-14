@@ -16,3 +16,7 @@
 ## 2024-05-20 - Safe Progressive Filtering in TUI
 **Learning:** Progressive filtering (searching within the previously filtered subset instead of all paths) is extremely effective for fuzzy finders, reducing search time exponentially on subsequent keystrokes. However, if the underlying search function truncates results (e.g., to a `_DISPLAY_LIMIT`), applying progressive filtering to the truncated list will cause correct matches to be missed.
 **Action:** When implementing progressive filtering, conditionally verify that the previous search result was **not** truncated (e.g., `len(state["filtered"]) < _DISPLAY_LIMIT`) before safely using it as the new input space.
+
+## 2024-05-30 - Workspace String Slicing Edge Case
+**Learning:** When using string slicing on file paths (like `ws_parent_len`), flat relative paths (like `projects` without any slashes) will result in `os.path.dirname("projects")` returning an empty string `""`. This causes the length evaluation to be 1, potentially truncating the first character of the display path.
+**Action:** Always be mindful of flat relative paths when replacing `pathlib.Path` logic with standard `os.path` operations, and ensure that workspace configurations are treated properly, generally enforcing or assuming absolute paths for reliable length-based string manipulation.
