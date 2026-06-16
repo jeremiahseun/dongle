@@ -16,3 +16,7 @@
 ## 2024-05-20 - Safe Progressive Filtering in TUI
 **Learning:** Progressive filtering (searching within the previously filtered subset instead of all paths) is extremely effective for fuzzy finders, reducing search time exponentially on subsequent keystrokes. However, if the underlying search function truncates results (e.g., to a `_DISPLAY_LIMIT`), applying progressive filtering to the truncated list will cause correct matches to be missed.
 **Action:** When implementing progressive filtering, conditionally verify that the previous search result was **not** truncated (e.g., `len(state["filtered"]) < _DISPLAY_LIMIT`) before safely using it as the new input space.
+
+## 2024-05-24 - String Slicing Edge Case with os.path.dirname
+**Learning:** When optimizing `os.walk` path relative calculations by replacing `pathlib.Path(...).relative_to(parent)` with string slicing, if the parent directory is relative and doesn't contain a slash (e.g., "tests"), `os.path.dirname()` returns an empty string. If not handled, this incorrectly leads to calculating a parent length of 1, slicing off the first character of the directory ("tests" -> "ests").
+**Action:** Always handle the case where `os.path.dirname()` returns an empty string when calculating lengths for path slicing, explicitly treating the parent length as 0.

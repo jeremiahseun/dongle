@@ -42,12 +42,29 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
             ws_path = Path(ws_dir)
             if not ws_path.exists():
                 continue
-            for curr_root, dirs, _files in os.walk(ws_path, topdown=True):
+
+            # String slicing optimization for Path.relative_to
+            ws_str = os.path.normpath(str(ws_path))
+            ws_len = len(ws_str) + (1 if not ws_str.endswith(os.sep) else 0)
+            dirname = os.path.dirname(ws_str)
+            if not dirname:
+                ws_parent_len = 0
+            else:
+                ws_parent_len = len(dirname) + (1 if not dirname.endswith(os.sep) else 0)
+
+            for curr_root, dirs, _files in os.walk(ws_str, topdown=True):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-                rel_root = Path(curr_root).relative_to(ws_path.parent)
-                depth = len(Path(curr_root).relative_to(ws_path).parts)
+
+                # Fast relative path calculation
+                if ws_parent_len == 0:
+                    rel_root_str = "." if curr_root == "." else curr_root
+                else:
+                    rel_root_str = curr_root[ws_parent_len:]
+
+                depth = 0 if curr_root == ws_str else curr_root[ws_len:].count(os.sep) + 1
+
                 if depth <= max_depth:
-                    paths.append((str(rel_root), curr_root))
+                    paths.append((rel_root_str, curr_root))
                     if len(paths) >= max_dirs:
                         return paths
                 else:
@@ -57,20 +74,29 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
         root_path = Path(root)
         max_depth = get_max_depth()
 
-        for curr_root, dirs, _files in os.walk(root_path, topdown=True):
+        # String slicing optimization for Path.relative_to
+        root_str = os.path.normpath(str(root_path))
+        root_len = len(root_str) + (1 if not root_str.endswith(os.sep) else 0)
+
+        for curr_root, dirs, _files in os.walk(root_str, topdown=True):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-            rel_root = Path(curr_root).relative_to(root_path)
+
+            # Fast relative path calculation
+            if curr_root == root_str:
+                rel_str = "."
+                depth = 0
+            else:
+                rel_str = curr_root[root_len:]
+                depth = rel_str.count(os.sep) + 1
 
             # Stop recursing past max depth
-            depth = len(rel_root.parts)
             if depth > max_depth:
                 dirs[:] = []
                 continue
 
-            if rel_root == Path("."):
+            if rel_str == ".":
                 paths.append(".")
             else:
-                rel_str = str(rel_root)
                 if not ignore_spec.match_file(rel_str):
                     paths.append(rel_str)
                 else:
