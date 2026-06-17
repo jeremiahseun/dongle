@@ -29,11 +29,11 @@ pip install --upgrade pip
 pip install pyinstaller
 pip install -e .
 
-# 3. Build standalone binaries with PyInstaller
+# 3. Build directory bundles with PyInstaller (--onedir = no per-run extraction, fast startup)
 log "Building standalone binaries..."
 
-# Interactive picker binary (heavy)
-pyinstaller --onefile \
+# Interactive picker binary (heavy — includes prompt_toolkit)
+pyinstaller --onedir \
     --noconfirm \
     --name dongle-pick \
     --add-data "dongle/shell:dongle/shell" \
@@ -43,7 +43,7 @@ pyinstaller --onefile \
     dongle/main.py
 
 # CLI entry-point binary (lightweight dispatcher)
-pyinstaller --onefile \
+pyinstaller --onedir \
     --noconfirm \
     --name dongle \
     --add-data "dongle/shell:dongle/shell" \
@@ -53,27 +53,44 @@ pyinstaller --onefile \
 
 deactivate
 
-# 4. Install locally to ~/.dongle/bin
+# 4. Install directory bundles to ~/.dongle/lib, thin wrapper scripts to ~/.dongle/bin
 INSTALL_DIR="$HOME/.dongle/bin"
-if [ -f "dist/dongle" ] && [ -f "dist/dongle-pick" ]; then
-    log "Installing built binaries to ${INSTALL_DIR}..."
-    mkdir -p "$INSTALL_DIR"
-    cp dist/dongle "$INSTALL_DIR/dongle"
-    cp dist/dongle-pick "$INSTALL_DIR/dongle-pick"
-    cp dist/dongle-pick "$INSTALL_DIR/dongle-scan"
-    cp dist/dongle-pick "$INSTALL_DIR/dongle-list"
-    
-    chmod +x \
-        "$INSTALL_DIR/dongle" \
-        "$INSTALL_DIR/dongle-pick" \
-        "$INSTALL_DIR/dongle-scan" \
-        "$INSTALL_DIR/dongle-list"
-        
-    ok "Build and installation successful! Standalone binaries located at: ${BOLD}${INSTALL_DIR}${RESET}"
+LIB_DIR="$HOME/.dongle/lib"
+
+if [ -d "dist/dongle" ] && [ -d "dist/dongle-pick" ]; then
+    log "Installing to ${LIB_DIR} and ${INSTALL_DIR}..."
+    mkdir -p "$INSTALL_DIR" "$LIB_DIR"
+
+    # Replace old lib bundles
+    rm -rf "$LIB_DIR/dongle" "$LIB_DIR/dongle-pick"
+    cp -r dist/dongle     "$LIB_DIR/dongle"
+    cp -r dist/dongle-pick "$LIB_DIR/dongle-pick"
+
+    # Create thin wrapper scripts (no extraction needed; just exec the real binary)
+    _write_wrapper() {
+        local name="$1" target="$2"
+        cat > "$INSTALL_DIR/$name" <<WRAPPER
+#!/bin/sh
+exec "$LIB_DIR/$target/$target" "\$@"
+WRAPPER
+        chmod +x "$INSTALL_DIR/$name"
+    }
+
+    _write_wrapper dongle      dongle
+    _write_wrapper dongle-pick dongle-pick
+    _write_wrapper dongle-scan dongle-pick
+    _write_wrapper dongle-list dongle-pick
+
+    # Cache the shell init script so .zshrc can source it without spawning a subprocess
+    log "Caching shell init scripts..."
+    "$LIB_DIR/dongle/dongle" init zsh  > "$HOME/.dongle/zsh_init.zsh"  2>/dev/null && ok "Cached zsh init  → ~/.dongle/zsh_init.zsh"  || true
+    "$LIB_DIR/dongle/dongle" init bash > "$HOME/.dongle/bash_init.sh" 2>/dev/null && ok "Cached bash init → ~/.dongle/bash_init.sh" || true
+
+    ok "Build and installation successful! Binaries at: ${BOLD}${INSTALL_DIR}${RESET}"
     echo ""
     log "To test it:"
     echo "  dongle doctor"
 else
-    echo "Build failed: binaries not found in dist/"
+    echo "Build failed: dist/dongle or dist/dongle-pick directory not found"
     exit 1
 fi

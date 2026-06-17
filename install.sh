@@ -208,6 +208,21 @@ install_via_binary() {
     rm -rf "$tmp_dir"
 }
 
+# ── Cache shell init scripts ──────────────────
+cache_init_scripts() {
+    # Pre-generate and cache shell init scripts so .zshrc/.bashrc can source them
+    # directly (no subprocess spawned on every shell open).
+    local init_dir="$HOME/.dongle"
+    mkdir -p "$init_dir"
+
+    if "$INSTALL_DIR/dongle" init zsh > "$init_dir/zsh_init.zsh" 2>/dev/null; then
+        ok "Cached zsh init → ~/.dongle/zsh_init.zsh"
+    fi
+    if "$INSTALL_DIR/dongle" init bash > "$init_dir/bash_init.sh" 2>/dev/null; then
+        ok "Cached bash init → ~/.dongle/bash_init.sh"
+    fi
+}
+
 # ── Shell RC helpers ──────────────────────────
 add_to_path() {
     local bin_dir="$1"
@@ -245,12 +260,12 @@ add_shell_integration() {
     case "$shell_name" in
         bash)
             rc_file="$HOME/.bashrc"
-            init_line='eval "$(dongle init bash)"'
+            init_line='[ -f ~/.dongle/bash_init.sh ] && source ~/.dongle/bash_init.sh'
             reload_cmd="source ~/.bashrc"
             ;;
         zsh)
             rc_file="$HOME/.zshrc"
-            init_line='eval "$(dongle init zsh)"'
+            init_line='[ -f ~/.dongle/zsh_init.zsh ] && source ~/.dongle/zsh_init.zsh'
             reload_cmd="source ~/.zshrc"
             ;;
         fish)
@@ -261,14 +276,19 @@ add_shell_integration() {
             ;;
         *)
             warn "Shell '$shell_name' not recognised. Add manually:"
-            echo '    eval "$(dongle init bash)"  # bash'
-            echo '    eval "$(dongle init zsh)"   # zsh'
-            echo '    dongle init fish | source   # fish'
+            echo '    [ -f ~/.dongle/bash_init.sh ] && source ~/.dongle/bash_init.sh  # bash'
+            echo '    [ -f ~/.dongle/zsh_init.zsh ] && source ~/.dongle/zsh_init.zsh  # zsh'
+            echo '    dongle init fish | source                                        # fish'
             return
             ;;
     esac
 
-    if [ -f "$rc_file" ] && grep -qF "dongle init" "$rc_file"; then
+    # Migrate existing eval-based integration to the faster source-based approach
+    if [ -f "$rc_file" ] && grep -qF 'eval "$(dongle init' "$rc_file"; then
+        sed -i.bak 's|eval "\$(dongle init zsh)"|[ -f ~/.dongle/zsh_init.zsh ] \&\& source ~/.dongle/zsh_init.zsh|g' "$rc_file"
+        sed -i.bak 's|eval "\$(dongle init bash)"|[ -f ~/.dongle/bash_init.sh ] \&\& source ~/.dongle/bash_init.sh|g' "$rc_file"
+        ok "Migrated shell integration to faster source-based init in $rc_file"
+    elif [ -f "$rc_file" ] && grep -qF "dongle" "$rc_file"; then
         ok "Shell integration already in $rc_file"
     else
         echo "" >> "$rc_file"
@@ -318,6 +338,7 @@ if [ -n "$INSTALLED_VERSION" ]; then
     else
         install_via_binary "upgrade"
     fi
+    cache_init_scripts
 
 else
     # ── Fresh install ──
@@ -326,7 +347,7 @@ else
     else
         install_via_binary "install"
     fi
-
+    cache_init_scripts
     add_shell_integration
 fi
 

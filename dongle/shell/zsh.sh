@@ -21,7 +21,14 @@ __dongle_widget() {
 
 __dongle_slash() {
     if [ -z "$BUFFER" ]; then
-        __dongle_widget
+        # Only invoke the picker when /dev/tty is a real interactive terminal.
+        # Without this guard the widget hangs in environments that have no TTY
+        # (e.g. Claude Code's embedded shell, CI, piped sessions).
+        if [[ -c /dev/tty ]] && { true </dev/tty; } 2>/dev/null; then
+            __dongle_widget
+        else
+            LBUFFER="${LBUFFER}/"
+        fi
     else
         LBUFFER="${LBUFFER}/"
     fi
@@ -68,5 +75,14 @@ dgl() { dongle list "$@"; }
 # dgrecent — show recently visited directories
 dgrecent() { dongle recent; }
 
-# Warm the cache in the background when a new shell opens
-(dongle scan &>/dev/null &)
+# Warm the cache in the background only when the cache is missing or stale.
+# Checking the cache file age avoids spawning dongle on every shell open.
+__dongle_warm_cache() {
+    local cache="$HOME/.dongle_cache.json"
+    # Refresh only if cache is older than 10 minutes or doesn't exist
+    if [[ ! -f "$cache" ]] || [[ $(( $(date +%s) - $(stat -f %m "$cache" 2>/dev/null || echo 0) )) -gt 600 ]]; then
+        (dongle scan &>/dev/null &)
+    fi
+}
+__dongle_warm_cache
+unset -f __dongle_warm_cache
