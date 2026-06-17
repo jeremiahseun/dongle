@@ -2,11 +2,11 @@
 
 
 a = Analysis(
-    ['dongle/cli.py'],
+    ['dongle/init_cmd.py'],
     pathex=[],
     binaries=[],
     datas=[('dongle/shell', 'dongle/shell')],
-    hiddenimports=[],
+    hiddenimports=['pathspec'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

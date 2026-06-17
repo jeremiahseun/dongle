@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: dongle
-Version: 0.2.9
+Version: 0.3.0
 Summary: Fast, fuzzy directory navigation for any terminal
 Author: Dongle Contributors
 License: MIT
@@ -16,7 +16,7 @@ Classifier: Operating System :: POSIX
 Classifier: Programming Language :: Python :: 3
 Classifier: Topic :: System :: Shells
 Classifier: Topic :: Utilities
-Requires-Python: >=3.7
+Requires-Python: >=3.9
 Description-Content-Type: text/markdown
 Requires-Dist: prompt_toolkit>=3.0
 Requires-Dist: pathspec>=0.11.0
@@ -26,22 +26,23 @@ Dynamic: requires-python
 
 # Dongle
 
-> **Fast, fuzzy directory navigation — for any terminal, any user.**
+> **Lightning-fast fuzzy directory navigation — for any terminal.**
 
-No more `cd ../../some/deep/nested/folder`. Just press `/` and search.
+No more `cd ../../some/deep/nested/folder`. Press `/` and search.
 
 ```
-  Dongle  in ~/my-project
-  / src comp                          ← you type this
-  ──────────────────────────────────
-  ❯ src/components/ui                 ← highlighted selection
+  Project  ~/my-project  (42 dirs)
+  / src comp
+  ❯ src/components/ui
     src/components/auth
     src/components/dashboard
     src/components/forms/inputs
     tests/components
+  ─────────────────────────────────────────────────────────
+  ↑↓ nav   Enter select   ^W workspace   ^R rescan   Esc cancel
 ```
 
-Press Enter. You're there.
+Press **Enter**. You're there.
 
 ---
 
@@ -49,119 +50,181 @@ Press Enter. You're there.
 
 https://github.com/user-attachments/assets/6460e432-f732-4d4b-8324-1308ee36460c
 
-## Features
-
-- **Google-style live search** — results update as you type
-- **Pre-filled queries** — type `dg query` or `dgw query` to instantly open the picker with your search applied
-- **Fuzzy matching** — `src/comp` finds `src/components/Button`. Exact folder segments receive massive ranking bonuses (e.g. `android` perfectly matches the `/android` folder).
-- **Smart project root** — searches from the project root, not just `$PWD`. Deep inside `ios/`? You can still find `android/`
-- **Workspace search** — type `dgw` to search across all your projects instantly
-- **Workspace fallback** — hit `Ctrl+W` during a local search to dynamically switch to a global workspace search without restarting the picker
-- **`.gitignore` aware** — automatically respects your `.gitignore` and `.dongleignore` files
-- **Any terminal** — works in Bash, Zsh, and Fish
-- **Fast** — scans and caches paths in milliseconds
-- **Zero config** — one install command and you're done
-
 ---
 
 ## Install
 
-### One-liner (recommended)
+### One command (recommended)
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/jeremiahseun/dongle/main/install.sh | bash
 ```
 
-The installer automatically:
-- Detects your OS (macOS / Linux) and architecture (ARM / x64)
-- Installs via `pip` if Python 3.10+ is available
-- Downloads a **standalone binary** from [GitHub Releases](https://github.com/jeremiahseun/dongle/releases) if Python is not installed
-- Adds Dongle to your shell config (`~/.zshrc`, `~/.bashrc`, or Fish config)
+That's it. The installer:
+- Detects your OS (macOS / Linux) and architecture (ARM64 / x64)
+- Downloads a **single self-contained binary** — no Python, no dependencies
+- Adds `dongle` to your PATH
+- Wires up shell integration in `~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`
 
-> **No Python? No problem.** The installer handles everything automatically.
+Reload your shell and start using `/`.
 
-### Or install manually via pip
+> **Prefer pip?** `pip install dongle` then add `eval "$(dongle init zsh)"` (or bash/fish) to your shell config.
 
-```bash
-pip install dongle
-```
+### Platform support
 
-Then add to your shell config:
-
-```bash
-# Bash (~/.bashrc)
-eval "$(dongle init bash)"
-
-# Zsh (~/.zshrc)
-eval "$(dongle init zsh)"
-
-# Fish (~/.config/fish/config.fish)
-dongle init fish | source
-```
-
-Reload your shell and you're done.
-
-### Windows
-
-Dongle currently supports macOS and Linux. For Windows, install via [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) and follow the Linux instructions. Native Windows support is on the [roadmap](ROADMAP.md).
+| Platform | Status |
+|----------|--------|
+| macOS (Apple Silicon) | ✅ Full support |
+| macOS (Intel) | ✅ Full support |
+| Linux (x64) | ✅ Full support |
+| Linux (ARM64) | ✅ Full support |
+| Windows (WSL) | ✅ Works via WSL |
+| Windows (native) | 🔜 On the roadmap |
 
 ---
 
-## Usage
+## How to use
 
-| Action | Result |
-|--------|--------|
-| Press `/` on an empty prompt | Open directory search in current folder |
+### The basics
+
+| What you do | What happens |
+|-------------|-------------|
+| Press `/` on an empty prompt | Open directory search |
 | Press `Ctrl+O` anywhere | Open directory search (insert path at cursor) |
-| Type `dg` | Same as pressing / |
-| Type `dg query` | Open directory search with pre-filled typed query |
-| Type `dgw` | Open **Workspace Search** (search across multiple projects) |
-| Type `dgs` | Pre-scan and cache the current directory |
-| `dongle-pick ~/projects/myapp` | Search from a specific root |
-| `dongle-scan` | Warm the cache for current directory |
+| Press `Ctrl+/` anywhere | Same as Ctrl+O |
+| Type `dg` | Open directory search |
+| Type `dg <query>` | Open search pre-filled with your query |
+| Type `dgw` | Search across **all your projects** (workspace mode) |
+| Type `dgr` | Jump to project root instantly — no picker |
+| Type `dgl` | List all cached paths in the current project |
+| Type `dgs` | Re-scan and refresh the cache |
+| Type `dgrecent` | Show recently visited directories |
 
-### Navigation inside the picker
+### Inside the picker
 
 | Key | Action |
 |-----|--------|
-| Type | Filter results live |
+| Type anything | Filter results live |
 | `↑` / `↓` or `Ctrl+P` / `Ctrl+N` | Move selection |
-| `Tab` / `Shift+Tab` | Move selection |
-| `Ctrl+W` | Switch to global workspace search (`dgw` mode) dynamically |
-| `Enter` | Navigate to selected path |
-| `Esc` or `Ctrl+C` | Cancel |
+| `Enter` | Navigate to selected directory |
+| `Ctrl+W` | Switch to workspace search without closing |
+| `Ctrl+R` | Rescan the directory tree (refresh cache) |
+| `Ctrl+U` | Clear the current query |
+| `Esc` / `Ctrl+C` | Cancel |
+
+### Commands
+
+```
+dongle init <shell>    Output shell integration (bash / zsh / fish)
+dongle root            Print the project root for the current directory
+dongle recent          Show recently visited directories
+dongle scan            Pre-scan and cache the current directory
+dongle list            List all cached paths
+dongle doctor          Diagnose installation issues
+dongle update          Update to the latest version
+dongle version         Show version
+```
 
 ---
 
-## How it works
+## Features
 
-1. **On activation**, Dongle quickly walks your current directory tree (skipping `node_modules`, `.git`, build artifacts, etc.)
-2. **Paths are cached** for 5 minutes so repeated searches are instant
-3. **Fuzzy search** scores results by how well they match — exact substrings rank highest, then character sequence matches
-4. **The shell integration** handles the actual `cd` so Dongle works with any shell that supports keybindings
+### Google-style live search
+Results update on every keystroke. The picker stays open until you confirm or cancel — no flickering, no full-screen takeover.
+
+### Smart fuzzy matching
+- **Exact substring** — `comp` finds `src/components` before anything fuzzier
+- **Segment bonus** — `android` gives a huge boost when the path has an `/android/` segment
+- **Character sequence** — `scu` still finds `src/components/ui` as a fallback
+- **Match highlighting** — the matched portion lights up in the results list
+
+### Frecency — it learns what you use
+Every directory you navigate to is tracked by **frequency × recency**. When you open the picker with no query, your most-visited and most-recently-used directories float to the top automatically. The more you use Dongle, the smarter it gets.
+
+### Smart project root detection
+Dongle always searches from your **project root**, not just `$PWD`. If you're deep inside `ios/src/views/`, you can still find `android/` — Dongle walks upward and finds your `.git`, `package.json`, `Cargo.toml`, etc.
+
+### Workspace search
+Set `DONGLE_WORKSPACES` to a list of directories and `dgw` searches across all your projects at once:
+
+```bash
+export DONGLE_WORKSPACES="~/Documents/GitHub,~/Projects"
+```
+
+Press `Ctrl+W` inside any local search to switch to workspace mode on the fly.
+
+### `.gitignore` aware
+Dongle reads your `.gitignore` and a project-local `.dongleignore` file. `node_modules`, `dist`, `build`, and other noise are never shown.
+
+### Instant startup — zero terminal slowdown
+Shell integration loads in **under 100 ms** — you'll never notice it. The `dongle init` command that runs at shell startup imports nothing heavy; `prompt_toolkit` is only loaded when you actually open the picker.
+
+### Background cache warming
+When a new shell opens, a background scan warms the cache so your first search is always instant.
 
 ---
 
 ## Configuration
 
-Dongle works out of the box, but you can customize by setting environment variables:
+All settings are optional — Dongle works out of the box.
 
 ```bash
-export DONGLE_WORKSPACES="~/Documents/GitHub,~/Projects" # Folders to search when using dgw
-export DONGLE_SEARCH_DIR="~/Projects"           # Fallback folder when using dg outside a project
-export DONGLE_MAX_DEPTH=8       # how deep to scan (default: 6)
-export DONGLE_WORKSPACE_DEPTH=4 # how deep to scan inside workspaces (default: 4)
-export DONGLE_MAX_DIRS=10000    # max directories to index (default: 5000)
-export DONGLE_CACHE_TTL=600     # cache lifetime in seconds (default: 300)
-export DONGLE_SKIP_DIRS="dist,build,tmp"  # extra dirs to skip
+# Directories to search in workspace mode (dgw)
+export DONGLE_WORKSPACES="~/Documents/GitHub,~/Projects"
+
+# Fallback search root when outside a recognised project
+export DONGLE_SEARCH_DIR="~/Projects"
+
+# How deep to scan inside a project (default: 6)
+export DONGLE_MAX_DEPTH=8
+
+# How deep to scan inside workspace roots (default: 4)
+export DONGLE_WORKSPACE_DEPTH=4
+
+# Maximum number of directories to index (default: 5000)
+export DONGLE_MAX_DIRS=10000
+
+# Cache lifetime in seconds (default: 300 = 5 minutes)
+export DONGLE_CACHE_TTL=600
+
+# Extra directories to skip, comma-separated
+export DONGLE_SKIP_DIRS="dist,build,tmp,.output"
+```
+
+### Custom ignore patterns
+
+Create a `.dongleignore` file in any project root — same syntax as `.gitignore`:
+
+```
+# .dongleignore
+generated/
+*.tmp
+fixtures/large
 ```
 
 ---
 
-## Skipped directories
+## Skipped by default
 
-By default, Dongle skips:
-`.git`, `node_modules`, `__pycache__`, `dist`, `build`, `.next`, `.nuxt`, `venv`, `.venv`, `target`, `vendor`, `.idea`, `.vscode`, and other common noise directories.
+Dongle never shows: `.git`, `node_modules`, `__pycache__`, `dist`, `build`,
+`.next`, `.nuxt`, `venv`, `.venv`, `.tox`, `target`, `vendor`, `.idea`,
+`.vscode`, `coverage`, `.mypy_cache`, `.pytest_cache`, and more.
+
+---
+
+## Performance
+
+Dongle is designed to stay out of your way.
+
+| Scenario | Time |
+|----------|------|
+| Shell startup (`dongle init`) | < 100 ms |
+| Search — 100 paths | < 1 ms |
+| Search — 500 paths | < 1 ms |
+| Search — 1 000 paths | ~1 ms |
+| Search — 5 000 paths | ~5 ms |
+
+Cache hits are instant. Background scans never block your prompt.
 
 ---
 
@@ -170,28 +233,26 @@ By default, Dongle skips:
 | Tool | What it does |
 |------|-------------|
 | `cd` | Manual path typing — tedious for deep trees |
-| `autojump` / `zoxide` | Learns from history — great but needs training |
-| `fzf` | General fuzzy finder — powerful but requires setup |
-| **Dongle** | Instant visual search from your current root — no training needed |
+| `autojump` / `zoxide` | Learns from history — great, but needs training time |
+| `fzf` | General-purpose fuzzy finder — powerful but requires extra setup |
+| **Dongle** | Instant visual project search + frecency, zero config, works on first run |
 
-Dongle is **not** trying to replace any of these — it's a focused tool for one thing: getting to a path within a project quickly and visually.
+Dongle is not trying to replace any of these — it's focused on one thing: **get to a directory inside your project, fast, visually, with no training period.**
 
 ---
 
 ## Roadmap
 
-Dongle is continuously evolving. Check out [ROADMAP.md](ROADMAP.md) to see planned features like File Previews, Windows Support, and Action Menus!
+See [ROADMAP.md](ROADMAP.md) for planned features including File Previews, Action Menus (`Tab` → open in VS Code / Finder), and native Windows support.
 
 ---
 
 ## Contributing
 
-Dongle is open source and welcomes contributions!
-
 ```bash
 git clone https://github.com/jeremiahseun/dongle
 cd dongle
-pip install -e ".[dev]"
+pip install -e .
 ```
 
 Please open an issue before starting large features.

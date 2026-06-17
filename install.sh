@@ -100,8 +100,8 @@ install_via_pip() {
     py_major=$($PYTHON -c "import sys; print(sys.version_info.major)")
     py_minor=$($PYTHON -c "import sys; print(sys.version_info.minor)")
 
-    if [ "$py_major" -lt 3 ] || { [ "$py_major" -eq 3 ] && [ "$py_minor" -lt 10 ]; }; then
-        warn "Python $py_major.$py_minor found, but 3.10+ required. Falling back to binary."
+    if [ "$py_major" -lt 3 ] || { [ "$py_major" -eq 3 ] && [ "$py_minor" -lt 9 ]; }; then
+        warn "Python $py_major.$py_minor found, but 3.9+ required. Falling back to binary."
         return 1
     fi
 
@@ -121,9 +121,15 @@ install_via_pip() {
         return 1
     fi
 
-    local LOCAL_BIN="$HOME/.local/bin"
-    if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
-        add_to_path "$LOCAL_BIN"
+    local user_base
+    user_base=$($PYTHON -m site --user-base 2>/dev/null || true)
+    local py_bin="$HOME/.local/bin"
+    if [ -n "$user_base" ]; then
+        py_bin="${user_base}/bin"
+    fi
+
+    if [[ ":$PATH:" != *":$py_bin:"* ]]; then
+        add_to_path "$py_bin"
     fi
 
     return 0

@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-VERSION = "0.3.0"
+VERSION = "0.3.2"
 
 CACHE_FILE = Path.home() / ".dongle_cache.json"
 FRECENCY_FILE = Path.home() / ".dongle_frecency.json"

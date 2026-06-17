@@ -26,26 +26,54 @@ source build_venv/bin/activate
 # 2. Install dependencies
 log "Installing dependencies..."
 pip install --upgrade pip
-pip install prompt_toolkit pathspec pyinstaller
+pip install pyinstaller
+pip install -e .
 
-# 3. Build standalone binary
-log "Building standalone binary with PyInstaller..."
-# --add-data "source:destination"
-# On macOS/Linux, destination is relative to the bundle root
+# 3. Build standalone binaries with PyInstaller
+log "Building standalone binaries..."
+
+# Interactive picker binary (heavy)
 pyinstaller --onefile \
+    --noconfirm \
+    --name dongle-pick \
+    --add-data "dongle/shell:dongle/shell" \
+    --hidden-import prompt_toolkit \
+    --hidden-import pathspec \
+    --clean \
+    dongle/main.py
+
+# CLI entry-point binary (lightweight dispatcher)
+pyinstaller --onefile \
+    --noconfirm \
     --name dongle \
     --add-data "dongle/shell:dongle/shell" \
+    --hidden-import pathspec \
     --clean \
-    dongle/cli.py
+    dongle/init_cmd.py
 
 deactivate
 
-if [ -f "dist/dongle" ]; then
-    ok "Build successful! Binary located at: ${BOLD}dist/dongle${RESET}"
+# 4. Install locally to ~/.dongle/bin
+INSTALL_DIR="$HOME/.dongle/bin"
+if [ -f "dist/dongle" ] && [ -f "dist/dongle-pick" ]; then
+    log "Installing built binaries to ${INSTALL_DIR}..."
+    mkdir -p "$INSTALL_DIR"
+    cp dist/dongle "$INSTALL_DIR/dongle"
+    cp dist/dongle-pick "$INSTALL_DIR/dongle-pick"
+    cp dist/dongle-pick "$INSTALL_DIR/dongle-scan"
+    cp dist/dongle-pick "$INSTALL_DIR/dongle-list"
+    
+    chmod +x \
+        "$INSTALL_DIR/dongle" \
+        "$INSTALL_DIR/dongle-pick" \
+        "$INSTALL_DIR/dongle-scan" \
+        "$INSTALL_DIR/dongle-list"
+        
+    ok "Build and installation successful! Standalone binaries located at: ${BOLD}${INSTALL_DIR}${RESET}"
     echo ""
     log "To test it:"
-    echo "  ./dist/dongle version"
+    echo "  dongle doctor"
 else
-    echo "Build failed: dist/dongle not found."
+    echo "Build failed: binaries not found in dist/"
     exit 1
 fi

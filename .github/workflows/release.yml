@@ -40,6 +40,7 @@ jobs:
           # Picker binary — needs prompt_toolkit + pathspec bundled
           pyinstaller \
             --noconfirm \
+            --onefile \
             --name ${{ matrix.artifact }}-pick \
             --add-data "dongle/shell:dongle/shell" \
             --hidden-import prompt_toolkit \
@@ -49,6 +50,7 @@ jobs:
           # Main CLI binary — lightweight dispatcher; needs pathspec for dongle scan
           pyinstaller \
             --noconfirm \
+            --onefile \
             --name dongle \
             --add-data "dongle/shell:dongle/shell" \
             --hidden-import pathspec \
@@ -57,14 +59,13 @@ jobs:
       - name: Create release bundle
         run: |
           mkdir -p release_pack/${{ matrix.artifact }}
-          # Copy the compiled folders into our pack directory
-          cp -r dist/${{ matrix.artifact }}-pick/* release_pack/${{ matrix.artifact }}/
-          cp -r dist/dongle/* release_pack/${{ matrix.artifact }}/
+          # Copy the compiled standalone binaries into our pack directory
+          cp dist/${{ matrix.artifact }}-pick release_pack/${{ matrix.artifact }}/dongle-pick
+          cp dist/dongle release_pack/${{ matrix.artifact }}/dongle
 
           # Create convenience copies of the pick executable
-          cp release_pack/${{ matrix.artifact }}/${{ matrix.artifact }}-pick release_pack/${{ matrix.artifact }}/dongle-pick
-          cp release_pack/${{ matrix.artifact }}/${{ matrix.artifact }}-pick release_pack/${{ matrix.artifact }}/dongle-scan
-          cp release_pack/${{ matrix.artifact }}/${{ matrix.artifact }}-pick release_pack/${{ matrix.artifact }}/dongle-list
+          cp release_pack/${{ matrix.artifact }}/dongle-pick release_pack/${{ matrix.artifact }}/dongle-scan
+          cp release_pack/${{ matrix.artifact }}/dongle-pick release_pack/${{ matrix.artifact }}/dongle-list
 
           # Tar it up
           cd release_pack && tar -czf ../${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
