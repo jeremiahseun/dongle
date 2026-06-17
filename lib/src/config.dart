@@ -3,7 +3,7 @@ import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
 class DongleConfig {
-  static const String version = "0.4.0";
+  static const String version = "0.5.0";
 
   late final File cacheFile;
   late final File frecencyFile;

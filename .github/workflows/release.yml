@@ -20,61 +20,33 @@ jobs:
           - os: ubuntu-latest
             artifact: dongle-linux-x64
 
-    runs-on: ${{ matrix.os }}
+    runs-on: \${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
 
       - name: Install dependencies
-        run: |
-          pip install pyinstaller
-          pip install -e .
+        run: dart pub get
 
-      - name: Build standalone binaries
+      - name: Build standalone binary
         run: |
-          # Picker binary — needs prompt_toolkit + pathspec bundled
-          pyinstaller \
-            --noconfirm \
-            --onefile \
-            --name ${{ matrix.artifact }}-pick \
-            --add-data "dongle/shell:dongle/shell" \
-            --hidden-import prompt_toolkit \
-            --hidden-import pathspec \
-            dongle/main.py
-
-          # Main CLI binary — lightweight dispatcher; needs pathspec for dongle scan
-          pyinstaller \
-            --noconfirm \
-            --onefile \
-            --name dongle \
-            --add-data "dongle/shell:dongle/shell" \
-            --hidden-import pathspec \
-            dongle/init_cmd.py
+          mkdir -p build
+          dart compile exe bin/app.dart -o build/dongle
 
       - name: Create release bundle
         run: |
-          mkdir -p release_pack/${{ matrix.artifact }}
-          # Copy the compiled standalone binaries into our pack directory
-          cp dist/${{ matrix.artifact }}-pick release_pack/${{ matrix.artifact }}/dongle-pick
-          cp dist/dongle release_pack/${{ matrix.artifact }}/dongle
-
-          # Create convenience copies of the pick executable
-          cp release_pack/${{ matrix.artifact }}/dongle-pick release_pack/${{ matrix.artifact }}/dongle-scan
-          cp release_pack/${{ matrix.artifact }}/dongle-pick release_pack/${{ matrix.artifact }}/dongle-list
-
-          # Tar it up
-          cd release_pack && tar -czf ../${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
+          mkdir -p release_pack/\${{ matrix.artifact }}
+          cp build/dongle release_pack/\${{ matrix.artifact }}/dongle
+          cd release_pack && tar -czf ../\${{ matrix.artifact }}.tar.gz \${{ matrix.artifact }}
 
       - name: Upload binary artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.tar.gz
+          name: \${{ matrix.artifact }}
+          path: \${{ matrix.artifact }}.tar.gz
 
   release:
     needs: build
@@ -92,7 +64,7 @@ jobs:
         run: |
           mkdir -p release
           for dir in binaries/*/; do
-            cp "$dir"* release/ 2>/dev/null || true
+            cp "\$dir"* release/ 2>/dev/null || true
           done
           chmod +x release/*
           ls -la release/
@@ -103,4 +75,4 @@ jobs:
           generate_release_notes: true
           files: release/*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}

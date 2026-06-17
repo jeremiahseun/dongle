@@ -1,6 +1,6 @@
 name: dongle
 description: Lightning-fast fuzzy directory navigation (Dart Edition)
-version: 0.4.0
+version: 0.5.0
 
 environment:
   sdk: ^3.11.0
