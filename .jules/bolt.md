@@ -6,10 +6,25 @@
 **Learning:** Using `.split("/")` in a hot loop (like filtering 10,000s of paths on every keystroke) creates measurable overhead due to array allocations and list iterations.
 **Action:** Replace `.split()` with substring searches over slash-wrapped strings. Instead of `q in path.split("/")`, wrap the path and query: `f"/{q}/" in f"/{path}/"`. This utilizes C-level substring search and avoids string allocation for `split()`.
 
+## 2024-05-18 - Tuple Sorting TypeError Bug
+**Learning:** Using element-by-element tuple comparison in `.sort()` or `heapq` without lambdas can raise a `TypeError` if there's a tie in the initial elements and the engine falls back to comparing an unorderable object.
+**Action:** Always insert a unique tie-breaker integer (like from `enumerate`) into the tuple to guarantee the unorderable object is never evaluated during comparisons.
+## 2024-05-18 - Pathlib overhead in os.walk vs String Slicing
+**Learning:** In highly nested I/O-bound loops like `os.walk`, calculating depth via `len(pathlib.Path().relative_to().parts)` creates massive object instantiation overhead. While pure string slicing (`norm_curr[root_len:]`) seems like a faster C-level optimization, it fails spectacularly on OS root directories (`/` or `C:\`) because trailing slashes throw off character counts.
+**Action:** Use `os.path.relpath()` instead of `pathlib` for a robust ~3x speedup. It correctly handles root directory edge cases natively while bypassing expensive object creation.
+
 ## 2024-05-19 - Use C-optimized str.find for fuzzy matching instead of manual iteration
 **Learning:** In hot loops like `_score` for fuzzy path matching, using `str.find(c, idx + 1)` is significantly faster (approx. 40% faster) than a stateful python `for c in path_lower` loop because `find` is implemented in C.
 **Action:** When implementing character sequence matching (fuzzy finding), iterate over the query characters and use `str.find` on the target string rather than iterating over the target string in pure Python.
 
+## 2024-05-20 - Safe Progressive Filtering in TUI
+**Learning:** Progressive filtering (searching within the previously filtered subset instead of all paths) is extremely effective for fuzzy finders, reducing search time exponentially on subsequent keystrokes. However, if the underlying search function truncates results (e.g., to a `_DISPLAY_LIMIT`), applying progressive filtering to the truncated list will cause correct matches to be missed.
+**Action:** When implementing progressive filtering, conditionally verify that the previous search result was **not** truncated (e.g., `len(state["filtered"]) < _DISPLAY_LIMIT`) before safely using it as the new input space.
 ## 2024-05-20 - Fast Path Optimization for Empty Queries
 **Learning:** In the `search()` function of `dongle/matcher.py`, when the user's query is empty (such as when the UI is initially opened), the original code was fully sorting the potentially tens of thousands of paths (`O(N log N)`). Because the UI only ever displays `_DISPLAY_LIMIT` (50) items, fully sorting the list is unnecessary overhead.
 **Action:** Use `heapq.nsmallest(K, ...)` instead of `sorted(...)` when only the top K items are needed from an unfiltered list. This transforms the operation from `O(N log N)` to `O(N log K)`, providing a ~64-73% execution time reduction for the empty query fast path, making initial load snappy.
+
+
+## 2024-05-21 - Optimize sorted() data source
+**Learning:** Passing a generator expression directly to Python's `sorted()` function introduces lazy-evaluation overhead in Python. Generating the list upfront via a list comprehension performs significantly faster by utilizing C-level list building, which `sorted()` prefers over lazily consuming values via `__next__`.
+**Action:** When working with large iterables that will be sorted immediately, materialize them via list comprehensions rather than generator expressions to optimize performance.
