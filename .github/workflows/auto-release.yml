@@ -1,7 +1,7 @@
 name: Auto Release on Main
 
 # Triggers on every push to main (including merged PRs).
-# Reads the version from dongle/config.py, creates a git tag for it
+# Reads the version from pubspec.yaml, creates a git tag for it
 # if one doesn't exist yet, then triggers the release.yml build.
 
 on:
@@ -24,7 +24,7 @@ jobs:
       - name: Read version from source
         id: version
         run: |
-          VERSION=$(grep -E '^VERSION\s*=' dongle/config.py | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          VERSION=$(grep -E '^version:' pubspec.yaml | head -1 | awk '{print $2}')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "Detected version: $VERSION"
