@@ -78,9 +78,11 @@ def search(query: str, paths: list, frecency: dict = None) -> list:
             if is_tuple:
                 # Optimized: native tuple comparison
                 # Note: `i` is used as a tie-breaker so it doesn't fall back to comparing unorderable `p` objects
-                return [p for _, _, _, p in sorted(((-fget(p[1], 0), len(p[0]), i, p) for i, p in enumerate(paths)))]
+                # Optimized: using list comprehension instead of generator expression inside sorted() avoids generator overhead
+                return [p for _, _, _, p in sorted([(-fget(p[1], 0), len(p[0]), i, p) for i, p in enumerate(paths)])]
             else:
-                return [p for _, _, _, p in sorted(((-fget(p, 0), len(p), i, p) for i, p in enumerate(paths)))]
+                # Optimized: using list comprehension instead of generator expression inside sorted() avoids generator overhead
+                return [p for _, _, _, p in sorted([(-fget(p, 0), len(p), i, p) for i, p in enumerate(paths)])]
         else:
             if is_tuple:
                 return sorted(paths, key=lambda p: len(p[0]))
