@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Dongle Native Core (C++17) — v0.6.0
-// Zero-dependency, instant (<2ms) fuzzy directory navigation & TUI picker.
+// Dongle Native Core (C++17) — v0.7.0
+// Zero-dependency, instant (<2ms) bidirectional fuzzy directory navigation.
 // Compiles cleanly on macOS & Linux with: clang++ -O3 -std=c++17 src/dongle.cpp -o dongle
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -25,7 +25,7 @@
 #include <unistd.h>
 #include <vector>
 
-static const char *DONGLE_VERSION = "0.6.0";
+static const char *DONGLE_VERSION = "0.7.0";
 static const int DISPLAY_LIMIT = 50;
 static const int VISIBLE_ROWS = 15;
 
@@ -37,6 +37,20 @@ static const char *C_RED    = "\033[31m";
 static const char *C_BOLD   = "\033[1m";
 static const char *C_DIM    = "\033[2m";
 static const char *C_RESET  = "\033[0m";
+
+enum class ScopeMode {
+    BOTH = 0, // Search 5 layers down + 4 layers up (and sibling trees)
+    DOWN = 1, // Only search downward from current root
+    UP   = 2  // Only search upward (ancestors & upper sibling branches)
+};
+
+static const char *scope_name(ScopeMode m) {
+    switch (m) {
+        case ScopeMode::DOWN: return "Down ↓";
+        case ScopeMode::UP:   return "Up ↑";
+        default:              return "Up+Down ⇅";
+    }
+}
 
 // ── Embedded Shell Integration Scripts ─────────────────────────
 static const char *ZSH_INIT_SCRIPT = R"ZSH(# Dongle — Zsh Integration
@@ -88,27 +102,36 @@ __dongle_chpwd() {
 typeset -gaU chpwd_functions
 chpwd_functions+=(__dongle_chpwd)
 
-# dg — fuzzy search from current project root (auto-jumps if exact 1 match)
+# dg — bidirectional search (3-5 layers down + 3-5 layers up).
+# Supports `dg up [query]` and `dg down [query]`.
+# Auto-jumps ONLY when an exact directory name match is unambiguous; otherwise shows suggestions.
 dg() {
+    local scope="both"
+    if [ "${1:-}" = "up" ] || [ "${1:-}" = "u" ]; then
+        scope="up"
+        shift
+    elif [ "${1:-}" = "down" ] || [ "${1:-}" = "d" ]; then
+        scope="down"
+        shift
+    fi
+
     local chosen
     if [ $# -gt 0 ]; then
-        chosen="$(dongle pick --auto-select --query "$*" </dev/tty 2>/dev/tty)"
+        chosen="$(dongle pick --scope "$scope" --auto-select --query "$*" </dev/tty 2>/dev/tty)"
     else
-        chosen="$(dongle pick </dev/tty 2>/dev/tty)"
+        chosen="$(dongle pick --scope "$scope" </dev/tty 2>/dev/tty)"
     fi
     [ $? -eq 0 ] && [ -n "$chosen" ] && cd "$chosen" && echo "  → ${chosen/#$HOME/~}"
 }
 
-# dgj — instant headless jump to #1 match without opening TUI
-dgj() {
-    local chosen
-    chosen="$(dongle jump "$*" 2>/dev/tty)"
-    if [ $? -eq 0 ] && [ -n "$chosen" ]; then
-        cd "$chosen" && echo "  → ${chosen/#$HOME/~}"
-    else
-        dg "$@"
-    fi
-}
+# dgu — search only upward (3-5 layers above current folder)
+dgu() { dg up "$@"; }
+
+# dgd — search only downward (3-5 layers inside current folder)
+dgd() { dg down "$@"; }
+
+# dgj — verified jump: jumps immediately if exact folder name exists, else opens suggestions picker
+dgj() { dg "$@"; }
 
 dgs() { dongle scan "$@"; }
 
@@ -184,24 +207,27 @@ case "$PROMPT_COMMAND" in
 esac
 
 dg() {
+    local scope="both"
+    if [ "${1:-}" = "up" ] || [ "${1:-}" = "u" ]; then
+        scope="up"
+        shift
+    elif [ "${1:-}" = "down" ] || [ "${1:-}" = "d" ]; then
+        scope="down"
+        shift
+    fi
+
     local chosen
     if [ $# -gt 0 ]; then
-        chosen="$(dongle pick --auto-select --query "$*" </dev/tty 2>/dev/tty)"
+        chosen="$(dongle pick --scope "$scope" --auto-select --query "$*" </dev/tty 2>/dev/tty)"
     else
-        chosen="$(dongle pick </dev/tty 2>/dev/tty)"
+        chosen="$(dongle pick --scope "$scope" </dev/tty 2>/dev/tty)"
     fi
     [ $? -eq 0 ] && [ -n "$chosen" ] && cd "$chosen" && echo "  → $(pwd | sed "s|$HOME|~|")"
 }
 
-dgj() {
-    local chosen
-    chosen="$(dongle jump "$*" 2>/dev/tty)"
-    if [ $? -eq 0 ] && [ -n "$chosen" ]; then
-        cd "$chosen" && echo "  → $(pwd | sed "s|$HOME|~|")"
-    else
-        dg "$@"
-    fi
-}
+dgu() { dg up "$@"; }
+dgd() { dg down "$@"; }
+dgj() { dg "$@"; }
 
 alias dgs='dongle scan'
 
@@ -263,22 +289,36 @@ function __dongle_chpwd --on-variable PWD
 end
 
 function dg
+    set scope "both"
     if test (count $argv) -gt 0
-        set chosen (dongle pick --auto-select --query "$argv" </dev/tty 2>/dev/tty)
+        if test "$argv[1]" = "up" -o "$argv[1]" = "u"
+            set scope "up"
+            set -e argv[1]
+        else if test "$argv[1]" = "down" -o "$argv[1]" = "d"
+            set scope "down"
+            set -e argv[1]
+        end
+    end
+
+    if test (count $argv) -gt 0
+        set chosen (dongle pick --scope "$scope" --auto-select --query "$argv" </dev/tty 2>/dev/tty)
     else
-        set chosen (dongle pick </dev/tty 2>/dev/tty)
+        set chosen (dongle pick --scope "$scope" </dev/tty 2>/dev/tty)
     end
     and cd $chosen
+    and echo "  → "(pwd | string replace $HOME "~")
+end
+
+function dgu
+    dg up $argv
+end
+
+function dgd
+    dg down $argv
 end
 
 function dgj
-    set chosen (dongle jump "$argv" 2>/dev/tty)
-    if test $status -eq 0 -a -n "$chosen"
-        cd $chosen
-        echo "  → "(pwd | string replace $HOME "~")
-    else
-        dg $argv
-    end
+    dg $argv
 end
 
 function dgs
@@ -402,6 +442,13 @@ static std::string replace_home_tilde(const std::string &p) {
     return p;
 }
 
+static std::string basename_of(const std::string &p) {
+    if (p.empty() || p == "/") return "/";
+    size_t sl = p.find_last_of('/');
+    if (sl == std::string::npos) return p;
+    return p.substr(sl + 1);
+}
+
 static int get_env_int(const char *name, int fallback) {
     const char *v = std::getenv(name);
     if (!v || !*v) return fallback;
@@ -434,7 +481,8 @@ static std::set<std::string> get_skip_dirs() {
         ".npm", ".yarn", "dist", "build", ".next", ".nuxt", "venv",
         ".venv", "env", ".env", ".tox", "target", "vendor", ".idea",
         ".vscode", "coverage", ".mypy_cache", ".pytest_cache", "build_venv",
-        "build_native", "Library", ".Trash", "Applications", "Pictures", "Music", "Movies"
+        "build_native", "Library", ".Trash", "Applications", "Pictures", "Music", "Movies",
+        "System", "Volumes", "dev", "proc", "sys", "cores", "private"
     };
     const char *extra = std::getenv("DONGLE_SKIP_DIRS");
     if (extra && *extra) {
@@ -495,22 +543,26 @@ static bool matches_ignore(const std::string &rel_path, const std::string &base_
     return false;
 }
 
-// ── Path Item & Fast Recursive Scanner ─────────────────────────
+// ── Bidirectional Path Scanner (3-5 Layers Down + 3-5 Layers Up) ──
 
 struct PathItem {
     std::string display;
     std::string full;
+    bool is_upward; // true if from an ancestor/upper branch
 };
 
 static void walk_dir(const std::string &root_str,
-                     const std::string &display_base_str,
+                     const std::string &display_prefix,
                      const std::string &curr_dir,
                      int depth,
                      int max_depth,
                      int max_dirs,
                      bool is_workspace,
+                     bool is_upward,
+                     const std::string &exclude_subtree,
                      const std::set<std::string> &skip_dirs,
                      const std::vector<std::string> &ignore_pats,
+                     std::set<std::string> &seen_full,
                      std::vector<PathItem> &out) {
     if ((int)out.size() >= max_dirs || depth > max_depth) return;
 
@@ -524,7 +576,9 @@ static void walk_dir(const std::string &root_str,
         if (name[0] == '.') continue;
         if (skip_dirs.count(name)) continue;
 
-        std::string child_full = curr_dir + "/" + name;
+        std::string child_full = (curr_dir == "/") ? ("/" + std::string(name)) : (curr_dir + "/" + name);
+        if (!exclude_subtree.empty() && child_full == exclude_subtree) continue;
+
         bool is_d = false;
         if (entry->d_type == DT_DIR) {
             is_d = true;
@@ -533,9 +587,9 @@ static void walk_dir(const std::string &root_str,
         }
         if (!is_d) continue;
 
-        std::string rel = child_full.substr(root_str.size() + 1);
-        if (!is_workspace && !ignore_pats.empty() && matches_ignore(rel, name, ignore_pats)) {
-            continue;
+        if (!is_workspace && !ignore_pats.empty() && child_full.size() > root_str.size() + 1) {
+            std::string rel = child_full.substr(root_str.size() + 1);
+            if (matches_ignore(rel, name, ignore_pats)) continue;
         }
         subdirs.push_back(name);
     }
@@ -545,20 +599,28 @@ static void walk_dir(const std::string &root_str,
 
     for (const auto &d : subdirs) {
         if ((int)out.size() >= max_dirs) break;
-        std::string child_full = curr_dir + "/" + d;
-        std::string disp = display_base_str.empty()
-                               ? child_full.substr(root_str.size() + 1)
-                               : child_full.substr(display_base_str.size() + 1);
-        out.push_back({disp, child_full});
+        std::string child_full = (curr_dir == "/") ? ("/" + d) : (curr_dir + "/" + d);
+        if (seen_full.count(child_full)) continue;
+        seen_full.insert(child_full);
+
+        std::string rel_part = (curr_dir == root_str)
+                                   ? d
+                                   : child_full.substr(root_str.size() + (root_str == "/" ? 0 : 1));
+        std::string disp = display_prefix.empty() ? rel_part : (display_prefix + "/" + rel_part);
+
+        out.push_back({disp, child_full, is_upward});
         if (depth + 1 <= max_depth) {
-            walk_dir(root_str, display_base_str, child_full, depth + 1, max_depth,
-                     max_dirs, is_workspace, skip_dirs, ignore_pats, out);
+            walk_dir(root_str, display_prefix, child_full, depth + 1, max_depth,
+                     max_dirs, is_workspace, is_upward, exclude_subtree, skip_dirs, ignore_pats, seen_full, out);
         }
     }
 }
 
-static std::vector<PathItem> scan_paths(const std::string &root, bool is_workspace) {
+static std::vector<PathItem> scan_paths(const std::string &root,
+                                        bool is_workspace,
+                                        ScopeMode scope = ScopeMode::BOTH) {
     std::vector<PathItem> out;
+    std::set<std::string> seen_full;
     int max_dirs = get_env_int("DONGLE_MAX_DIRS", 5000);
     auto skip_dirs = get_skip_dirs();
 
@@ -592,27 +654,80 @@ static std::vector<PathItem> scan_paths(const std::string &root, bool is_workspa
         int max_depth = get_env_int("DONGLE_WORKSPACE_DEPTH", 4);
         std::vector<std::string> empty_pats;
         for (const auto &ws : ws_dirs) {
-            size_t slash = ws.find_last_of('/');
-            std::string parent_base = (slash != std::string::npos && slash > 0) ? ws.substr(0, slash) : "";
-            std::string self_disp = parent_base.empty() ? ws : ws.substr(parent_base.size() + 1);
-            out.push_back({self_disp, ws});
-            walk_dir(ws, parent_base, ws, 1, max_depth, max_dirs, true, skip_dirs, empty_pats, out);
+            std::string self_disp = basename_of(ws);
+            if (!seen_full.count(ws)) {
+                seen_full.insert(ws);
+                out.push_back({self_disp, ws, false});
+            }
+            walk_dir(ws, self_disp, ws, 1, max_depth, max_dirs, true, false, "", skip_dirs, empty_pats, seen_full, out);
             if ((int)out.size() >= max_dirs) break;
         }
-    } else {
-        std::string abs_root = abspath(root);
-        bool is_home = (abs_root == abspath(get_home()));
-        int max_depth = get_env_int("DONGLE_MAX_DEPTH", 6);
-        if (is_home && max_depth > 3) max_depth = 3;
+        return out;
+    }
+
+    std::string abs_root = abspath(root);
+    bool is_home = (abs_root == abspath(get_home()));
+
+    // 1. Downward Scan (3-5+ layers inside current root)
+    if (scope == ScopeMode::BOTH || scope == ScopeMode::DOWN) {
+        int max_down_depth = get_env_int("DONGLE_MAX_DEPTH", 5);
+        if (is_home && max_down_depth > 3) max_down_depth = 3;
 
         auto ignore_pats = load_ignore_patterns(abs_root);
-        out.push_back({".", abs_root});
-        walk_dir(abs_root, "", abs_root, 1, max_depth, max_dirs, false, skip_dirs, ignore_pats, out);
+        seen_full.insert(abs_root);
+        out.push_back({".", abs_root, false});
+        walk_dir(abs_root, "", abs_root, 1, max_down_depth, max_dirs, false, false, "", skip_dirs, ignore_pats, seen_full, out);
     }
+
+    // 2. Upward Scan (3-5 layers above current root + sibling directories up to 2 levels deep)
+    if (scope == ScopeMode::BOTH || scope == ScopeMode::UP) {
+        int max_up_layers = get_env_int("DONGLE_UP_DEPTH", 4); // 4 layers above by default
+        std::string curr_anc = abs_root;
+        std::string prev_anc = abs_root;
+        std::string up_prefix;
+        std::vector<std::string> empty_pats;
+
+        for (int up_level = 1; up_level <= max_up_layers; ++up_level) {
+            if (curr_anc == "/" || curr_anc.empty()) break;
+            size_t sl = curr_anc.find_last_of('/');
+            std::string parent_anc = (sl == 0 || sl == std::string::npos) ? "/" : curr_anc.substr(0, sl);
+            if (parent_anc == curr_anc) break;
+
+            // Stop climbing into root "/" or "/Users" if it would expose system directories
+            if (parent_anc == "/" || parent_anc == "/Users" || parent_anc == "/Volumes") {
+                // Still add the immediate parent itself as a jump target if it's /Volumes/...
+                if (parent_anc != "/" && parent_anc != "/Users" && !seen_full.count(parent_anc)) {
+                    up_prefix = up_prefix.empty() ? ".." : (up_prefix + "/..");
+                    seen_full.insert(parent_anc);
+                    out.push_back({up_prefix + " (" + basename_of(parent_anc) + ")", parent_anc, true});
+                }
+                break;
+            }
+
+            up_prefix = up_prefix.empty() ? ".." : (up_prefix + "/..");
+            std::string anc_name = basename_of(parent_anc);
+
+            if (!seen_full.count(parent_anc)) {
+                seen_full.insert(parent_anc);
+                out.push_back({up_prefix + " (" + anc_name + ")", parent_anc, true});
+            }
+
+            // Scan sibling directories at this ancestor level (up to 2 levels deep for nearby ancestors, 1 for higher)
+            bool anc_is_home = (parent_anc == abspath(get_home()));
+            int sibling_depth = anc_is_home ? 1 : (up_level <= 2 ? 2 : 1);
+            walk_dir(parent_anc, up_prefix, parent_anc, 1, sibling_depth, max_dirs, false, true,
+                     prev_anc, skip_dirs, empty_pats, seen_full, out);
+
+            prev_anc = parent_anc;
+            curr_anc = parent_anc;
+            if ((int)out.size() >= max_dirs) break;
+        }
+    }
+
     return out;
 }
 
-// ── Frecency & Bookmarks Storage ───────────────────────────────
+// ── Frecency, Bookmarks & Shell History Seed ───────────────────
 
 struct FrecencyEntry {
     int visits;
@@ -622,24 +737,135 @@ struct FrecencyEntry {
 static std::string frecency_tsv_path() { return get_home() + "/.dongle_frecency.tsv"; }
 static std::string bookmarks_txt_path() { return get_home() + "/.dongle_bookmarks.txt"; }
 
-static std::map<std::string, FrecencyEntry> load_frecency() {
-    std::map<std::string, FrecencyEntry> data;
-    std::ifstream f(frecency_tsv_path());
-    if (f.is_open()) {
+static std::map<std::string, FrecencyEntry> load_frecency();
+static void save_frecency(const std::map<std::string, FrecencyEntry> &data);
+
+// Import historical `cd <dir>` commands from ~/.zsh_history, ~/.bash_history, and fish_history
+// so Dongle immediately knows your favorite directories without starting from scratch!
+static int import_shell_history(std::map<std::string, FrecencyEntry> &data) {
+    std::string home = get_home();
+    if (home.empty()) return 0;
+
+    std::vector<std::string> hist_files = {
+        home + "/.zsh_history",
+        home + "/.bash_history",
+        home + "/.local/share/fish/fish_history"
+    };
+
+    std::string cwd = get_cwd();
+    long long now = now_sec();
+    int imported_dirs = 0;
+
+    auto extract_and_add = [&](std::string cmd_str) {
+        cmd_str = trim(cmd_str);
+        // Strip zsh extended history prefix `: 1710000000:0;cd ...`
+        if (cmd_str.size() > 2 && cmd_str[0] == ':') {
+            size_t semi = cmd_str.find(';');
+            if (semi != std::string::npos) cmd_str = trim(cmd_str.substr(semi + 1));
+        }
+        // Strip fish history prefix `- cmd: cd ...`
+        const std::string fish_p = "- cmd:";
+        if (cmd_str.compare(0, fish_p.size(), fish_p) == 0) {
+            cmd_str = trim(cmd_str.substr(fish_p.size()));
+        }
+
+        // Look for `cd <arg>`
+        if (cmd_str.compare(0, 3, "cd ") != 0) return;
+        std::string arg = trim(cmd_str.substr(3));
+        // Strip trailing `;`, `&&`, `|`
+        size_t sep = arg.find_first_of(";&|");
+        if (sep != std::string::npos) arg = trim(arg.substr(0, sep));
+        // Strip quotes
+        if (arg.size() >= 2 && ((arg.front() == '"' && arg.back() == '"') || (arg.front() == '\'' && arg.back() == '\''))) {
+            arg = arg.substr(1, arg.size() - 2);
+        }
+        // Unescape `\ `
+        std::string unescaped;
+        for (size_t i = 0; i < arg.size(); ++i) {
+            if (arg[i] == '\\' && i + 1 < arg.size() && arg[i + 1] == ' ') {
+                unescaped.push_back(' ');
+                ++i;
+            } else {
+                unescaped.push_back(arg[i]);
+            }
+        }
+        arg = trim(unescaped);
+        if (arg.empty() || arg == "-" || arg == "." || arg == "..") return;
+
+        std::string candidate;
+        if (arg[0] == '~') {
+            candidate = home + arg.substr(1);
+        } else if (arg[0] == '/') {
+            candidate = arg;
+        } else {
+            // Try relative to $HOME first (most common interactive cd), then CWD
+            if (is_dir(home + "/" + arg)) candidate = home + "/" + arg;
+            else if (is_dir(cwd + "/" + arg)) candidate = cwd + "/" + arg;
+            else return;
+        }
+
+        char resolved[4096];
+        if (!realpath(candidate.c_str(), resolved)) return;
+        std::string full_p(resolved);
+        if (full_p == home || !is_dir(full_p)) return;
+
+        auto it = data.find(full_p);
+        if (it != data.end()) {
+            it->second.visits += 1;
+        } else {
+            data[full_p] = {1, now - 3600}; // weight as recent (<1 day)
+            ++imported_dirs;
+        }
+    };
+
+    for (const auto &hf : hist_files) {
+        std::ifstream f(hf, std::ios::in | std::ios::binary);
+        if (!f.is_open()) continue;
+        // Read up to last 512KB of history file for speed
+        f.seekg(0, std::ios::end);
+        std::streamoff len = f.tellg();
+        if (len > 524288) f.seekg(len - 524288);
+        else f.seekg(0);
+
         std::string line;
         while (std::getline(f, line)) {
-            size_t t1 = line.find('\t');
-            if (t1 == std::string::npos) continue;
-            size_t t2 = line.find('\t', t1 + 1);
-            if (t2 == std::string::npos) continue;
-            try {
-                int v = std::stoi(line.substr(0, t1));
-                long long ts = std::stoll(line.substr(t1 + 1, t2 - t1 - 1));
-                std::string path = line.substr(t2 + 1);
-                if (!path.empty()) data[path] = {v, ts};
-            } catch (...) {}
+            extract_and_add(line);
         }
     }
+
+    return imported_dirs;
+}
+
+static std::map<std::string, FrecencyEntry> load_frecency() {
+    std::map<std::string, FrecencyEntry> data;
+    std::string path = frecency_tsv_path();
+    bool exists = file_exists(path);
+
+    if (exists) {
+        std::ifstream f(path);
+        if (f.is_open()) {
+            std::string line;
+            while (std::getline(f, line)) {
+                size_t t1 = line.find('\t');
+                if (t1 == std::string::npos) continue;
+                size_t t2 = line.find('\t', t1 + 1);
+                if (t2 == std::string::npos) continue;
+                try {
+                    int v = std::stoi(line.substr(0, t1));
+                    long long ts = std::stoll(line.substr(t1 + 1, t2 - t1 - 1));
+                    std::string p = line.substr(t2 + 1);
+                    if (!p.empty()) data[p] = {v, ts};
+                } catch (...) {}
+            }
+        }
+    }
+
+    // Auto-bootstrap from shell history if frecency DB is empty or doesn't exist yet!
+    if (!exists || data.empty()) {
+        import_shell_history(data);
+        save_frecency(data);
+    }
+
     return data;
 }
 
@@ -715,7 +941,7 @@ static bool toggle_bookmark(const std::string &path) {
     }
 }
 
-// ── Fuzzy Matcher & Highlight Indices ──────────────────────────
+// ── Fuzzy Matcher, Exact-Name Verification & Highlight Indices ──
 
 static std::vector<std::string> split_query_segs(const std::string &q) {
     std::vector<std::string> segs;
@@ -731,12 +957,37 @@ static std::vector<std::string> split_query_segs(const std::string &q) {
     return segs;
 }
 
+// Check if query matches the exact basename or exact relative path of `item`
+static bool is_exact_name_match(const PathItem &item, const std::string &query) {
+    std::string q_lo = to_lower(trim(query));
+    if (q_lo.empty()) return false;
+    while (q_lo.size() > 1 && q_lo.back() == '/') q_lo.pop_back();
+
+    std::string disp_lo = to_lower(item.display);
+    if (disp_lo == q_lo) return true;
+
+    std::string base_lo = to_lower(basename_of(item.full));
+    if (base_lo == q_lo) return true;
+
+    // Also check if display ends with `/<q_lo>` when query has slashes
+    if (q_lo.find('/') != std::string::npos && disp_lo.size() > q_lo.size()) {
+        if (disp_lo.compare(disp_lo.size() - q_lo.size() - 1, q_lo.size() + 1, "/" + q_lo) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int score_path(const std::string &q,
                       const std::vector<std::string> &q_segs,
                       const std::vector<std::string> &q_segs_wrapped,
-                      const std::string &path_lower,
-                      int path_len) {
+                      const PathItem &item) {
+    std::string path_lower = to_lower(item.display);
+    std::string base_lower = to_lower(basename_of(item.full));
+    int path_len = static_cast<int>(item.display.size());
+
     if (q == path_lower) return 1000000;
+    if (q == base_lower) return item.is_upward ? 850000 : 950000;
 
     int score = 0;
     size_t idx = path_lower.find(q);
@@ -747,10 +998,13 @@ static int score_path(const std::string &q,
                 if (wrapped.find(qsw) != std::string::npos) score += 50000;
             }
         }
-        if (idx == 0 || path_lower[idx - 1] == '/' || path_lower[idx - 1] == '_' || path_lower[idx - 1] == '-') {
+        if (base_lower.find(q) == 0) {
+            score += 25000; // prefix of folder basename
+        } else if (idx == 0 || path_lower[idx - 1] == '/' || path_lower[idx - 1] == '_' || path_lower[idx - 1] == '-') {
             score += 5000;
         }
         score += 10000 - static_cast<int>(idx);
+        if (!item.is_upward) score += 1000; // slight preference for downward matches on ties
         return score;
     }
 
@@ -868,21 +1122,21 @@ static std::vector<PathItem> filter_and_rank(const std::string &query,
     if (query.empty()) {
         for (size_t i = 0; i < paths.size(); ++i) {
             const auto &p = paths[i];
-            long long sc = 0;
+            long long sc = p.is_upward ? -50 : 0; // show current tree first when query is empty, unless visited/pinned
             if (bookmarks.count(p.full)) sc += 1000000;
             auto fit = frecency.find(p.full);
             if (fit != frecency.end()) sc += fit->second * 100;
             ranked.push_back({sc, -static_cast<int>(p.display.size()), -static_cast<int>(i), i});
         }
     } else {
-        std::string q = to_lower(query);
+        std::string q = to_lower(trim(query));
         auto q_segs = split_query_segs(q);
         std::vector<std::string> q_segs_wrapped;
         for (const auto &s : q_segs) q_segs_wrapped.push_back("/" + s + "/");
 
         for (size_t i = 0; i < paths.size(); ++i) {
             const auto &p = paths[i];
-            int s = score_path(q, q_segs, q_segs_wrapped, to_lower(p.display), static_cast<int>(p.display.size()));
+            int s = score_path(q, q_segs, q_segs_wrapped, p);
             if (s > 0) {
                 long long total = s;
                 if (bookmarks.count(p.full)) total += 25000;
@@ -905,6 +1159,31 @@ static std::vector<PathItem> filter_and_rank(const std::string &query,
     out.reserve(ranked.size());
     for (const auto &r : ranked) out.push_back(paths[r.orig_idx]);
     return out;
+}
+
+// Parse inline query prefix (`up <q>`, `u: <q>`, `down <q>`, `d: <q>`)
+static std::pair<ScopeMode, std::string> parse_query_scope(const std::string &raw_query, ScopeMode base_scope) {
+    std::string trimmed = trim(raw_query);
+    std::string lo = to_lower(trimmed);
+    if (lo == "up") {
+        return {ScopeMode::UP, ""};
+    }
+    if (lo.compare(0, 3, "up ") == 0) {
+        return {ScopeMode::UP, trim(trimmed.substr(3))};
+    }
+    if (lo.compare(0, 2, "u:") == 0) {
+        return {ScopeMode::UP, trim(trimmed.substr(2))};
+    }
+    if (lo == "down") {
+        return {ScopeMode::DOWN, ""};
+    }
+    if (lo.compare(0, 5, "down ") == 0) {
+        return {ScopeMode::DOWN, trim(trimmed.substr(5))};
+    }
+    if (lo.compare(0, 2, "d:") == 0) {
+        return {ScopeMode::DOWN, trim(trimmed.substr(2))};
+    }
+    return {base_scope, raw_query};
 }
 
 // ── Live Directory Preview Generator (with Stack Badges & Git Info) ──
@@ -931,7 +1210,6 @@ static GitMetadata detect_git_metadata(const std::string &full_path) {
                     meta.branch = line.substr(0, 7);
                 }
             }
-            // Also read last line of .git/logs/HEAD for latest commit message (pure file read, <0.1ms)
             std::ifstream lf(git_dir + "/logs/HEAD");
             if (lf.is_open()) {
                 std::string lline, last_non_empty;
@@ -1017,10 +1295,7 @@ static std::vector<PreviewLine> get_preview_lines(const std::string &full_path, 
     std::sort(subdirs.begin(), subdirs.end());
     std::sort(files.begin(), files.end());
 
-    size_t slash = full_path.find_last_of('/');
-    std::string base = (slash != std::string::npos && slash + 1 < full_path.size())
-                           ? full_path.substr(slash + 1)
-                           : full_path;
+    std::string base = basename_of(full_path);
     auto git_meta = detect_git_metadata(full_path);
     std::string header = " 📁 " + base.substr(0, 20);
     if (!git_meta.branch.empty()) header += " (\033[38;5;42m" + git_meta.branch.substr(0, 12) + "\033[1;38;5;117m)";
@@ -1136,30 +1411,63 @@ static int get_tty_cols(int tty_fd) {
 
 static std::string run_picker_tui(const std::string &initial_root,
                                   bool initial_workspace,
+                                  ScopeMode initial_scope,
                                   const std::string &initial_query,
-                                  bool auto_select_single) {
+                                  bool auto_select_exact) {
     std::string root = initial_root;
     bool is_workspace = initial_workspace;
+    ScopeMode base_scope = initial_scope;
     std::string query = initial_query;
 
-    auto load_pool = [&](const std::string &r, bool ws) {
-        auto p = scan_paths(r, ws);
+    auto load_pool = [&](const std::string &r, bool ws, ScopeMode sc) {
+        auto p = scan_paths(r, ws, sc);
         if (!ws && p.size() <= 3 && abspath(r) == abspath(get_home())) {
-            auto ws_paths = scan_paths(r, true);
+            auto ws_paths = scan_paths(r, true, sc);
             for (const auto &wp : ws_paths) p.push_back(wp);
         }
         return p;
     };
 
-    auto paths = load_pool(root, is_workspace);
     auto frecency = get_frecency_scores();
     auto bm_vec = load_bookmarks();
     std::set<std::string> bookmarks(bm_vec.begin(), bm_vec.end());
-    auto filtered = filter_and_rank(query, paths, frecency, bookmarks);
 
-    // Smart Auto-Select: if invoked via `dg <query>` and there is exactly 1 match, jump immediately!
-    if (auto_select_single && !query.empty() && filtered.size() == 1) {
-        return filtered[0].full;
+    auto parsed = parse_query_scope(query, base_scope);
+    ScopeMode active_scope = parsed.first;
+    std::string effective_query = parsed.second;
+
+    auto paths = load_pool(root, is_workspace, active_scope);
+    auto filtered = filter_and_rank(effective_query, paths, frecency, bookmarks);
+
+    std::string toast;
+
+    // Smart Verified Auto-Jump:
+    // Only jump without TUI if there is an EXACT folder name match!
+    // If there is NO exact name match (or multiple ambiguous exact matches),
+    // open the interactive TUI with the ranked up/down suggestions so the user never lands in the wrong place.
+    if (auto_select_exact && !effective_query.empty()) {
+        std::vector<PathItem> exact_down;
+        std::vector<PathItem> exact_up;
+        for (const auto &item : filtered) {
+            if (is_exact_name_match(item, effective_query)) {
+                if (item.is_upward) exact_up.push_back(item);
+                else exact_down.push_back(item);
+            }
+        }
+        // 1. Immediate downward exact match -> jump if unique
+        if (exact_down.size() == 1) {
+            return exact_down[0].full;
+        }
+        // 2. If no downward exact match, check upward exact match -> jump if unique
+        if (exact_down.empty() && exact_up.size() == 1) {
+            return exact_up[0].full;
+        }
+        // Otherwise, we have fuzzy suggestions or multiple folders with the same name -> show TUI!
+        if (exact_down.empty() && exact_up.empty() && !filtered.empty()) {
+            toast = "No exact folder \"" + effective_query + "\" — showing best up/down suggestions";
+        } else if (exact_down.size() + exact_up.size() > 1) {
+            toast = std::to_string(exact_down.size() + exact_up.size()) + " folders named \"" + effective_query + "\" — choose one";
+        }
     }
 
     int tty_fd = open("/dev/tty", O_RDWR);
@@ -1181,8 +1489,18 @@ static std::string run_picker_tui(const std::string &initial_root,
     bool show_preview = get_preview_enabled();
     bool action_menu = false;
     int action_idx = 0;
-    std::string toast;
     int sel_idx = 0;
+
+    auto refresh_results = [&]() {
+        auto pr = parse_query_scope(query, base_scope);
+        if (pr.first != active_scope) {
+            active_scope = pr.first;
+            paths = load_pool(root, is_workspace, active_scope);
+        }
+        effective_query = pr.second;
+        filtered = filter_and_rank(effective_query, paths, frecency, bookmarks);
+        sel_idx = 0;
+    };
 
     const int TOTAL_LINES = 2 + VISIBLE_ROWS + 1;
     bool first_draw = true;
@@ -1200,11 +1518,11 @@ static std::string run_picker_tui(const std::string &initial_root,
         first_draw = false;
         buf << "\033[?25l";
 
-        // Line 1: Header
-        std::string mode = is_workspace ? "Workspace" : "Project";
+        // Line 1: Header with Scope indicator (Up+Down ⇅, Down ↓, Up ↑, or Workspace)
+        std::string mode = is_workspace ? "Workspace" : std::string(scope_name(active_scope));
         std::string disp_root = replace_home_tilde(root);
         buf << "\033[2K  \033[1;38;5;73m" << mode << "\033[0m  \033[38;5;117m" << disp_root << "\033[0m";
-        if (!query.empty()) {
+        if (!effective_query.empty()) {
             buf << "  \033[38;5;242m(" << filtered.size() << "/" << paths.size() << ")\033[0m";
         } else {
             buf << "  \033[38;5;242m(" << paths.size() << " dirs)\033[0m";
@@ -1233,7 +1551,7 @@ static std::string run_picker_tui(const std::string &initial_root,
             buf << "\033[2K";
             if (action_menu) {
                 if (r == 0) {
-                    std::string target_disp = filtered.empty() ? query : filtered[sel_idx].display;
+                    std::string target_disp = filtered.empty() ? effective_query : filtered[sel_idx].display;
                     buf << "    \033[1;38;5;73mActions for \033[38;5;117m" << target_disp << "\033[0m";
                 } else if (r >= 2 && r - 2 < NUM_ACTIONS) {
                     int ai = r - 2;
@@ -1247,11 +1565,11 @@ static std::string run_picker_tui(const std::string &initial_root,
                 }
             } else if (filtered.empty()) {
                 if (r == 0) {
-                    buf << "    \033[38;5;242mNo matches for \"" << query << "\".\033[0m";
+                    buf << "    \033[38;5;242mNo matches for \"" << effective_query << "\".\033[0m";
                 } else if (r == 1) {
-                    buf << "    \033[1;38;5;42mCtrl+Y\033[38;5;240m — create directory \"" << query << "\" & cd into it\033[0m";
+                    buf << "    \033[1;38;5;42mCtrl+Y\033[38;5;240m — create directory \"" << effective_query << "\" & cd into it\033[0m";
                 } else if (r == 2) {
-                    buf << "    \033[1;38;5;73mCtrl+W\033[38;5;240m — search across all workspaces  |  \033[1;38;5;73mCtrl+H\033[38;5;240m — climb up (..)\033[0m";
+                    buf << "    \033[1;38;5;73mCtrl+S\033[38;5;240m — cycle scope (Up+Down / Down / Up)  |  \033[1;38;5;73mCtrl+W\033[38;5;240m — workspace\033[0m";
                 }
             } else {
                 int item_idx = start + r;
@@ -1261,19 +1579,22 @@ static std::string run_picker_tui(const std::string &initial_root,
                     bool is_bm = bookmarks.count(item.full) > 0;
 
                     std::string disp = item.display;
-                    int max_disp = left_width - (is_bm ? 8 : 6);
+                    int max_disp = left_width - (is_bm ? 10 : 8);
                     if (max_disp > 5 && (int)disp.size() > max_disp) {
                         disp = disp.substr(0, max_disp - 1) + "…";
                     }
 
-                    auto mask = compute_match_mask(disp, query);
-                    const char *base_style = is_s ? "\033[1;97;48;5;24m" : "\033[0m";
+                    auto mask = compute_match_mask(disp, effective_query);
+                    const char *base_style = is_s ? "\033[1;97;48;5;24m" : (item.is_upward ? "\033[38;5;249m" : "\033[0m");
                     const char *hi_style   = is_s ? "\033[1;38;5;214;48;5;24m" : "\033[1;38;5;214m";
                     const char *pin_style  = is_s ? "\033[1;38;5;220;48;5;24m" : "\033[1;38;5;220m";
+                    const char *up_badge   = is_s ? "\033[1;38;5;117;48;5;24m↑ " : "\033[38;5;73m↑ ";
 
                     buf << "  " << base_style << (is_s ? "❯ " : "  ");
                     if (is_bm) {
                         buf << pin_style << "★ " << base_style;
+                    } else if (item.is_upward) {
+                        buf << up_badge << base_style;
                     }
                     for (size_t ci = 0; ci < disp.size(); ++ci) {
                         buf << (mask[ci] ? hi_style : base_style) << disp[ci];
@@ -1303,11 +1624,11 @@ static std::string run_picker_tui(const std::string &initial_root,
             buf << " \033[1;38;5;245m↑↓\033[38;5;240m nav  "
                 << "\033[1;38;5;245mEnter\033[38;5;240m cd  "
                 << "\033[1;38;5;245mTab\033[38;5;240m actions  "
-                << "\033[1;38;5;245m^H/^L\033[38;5;240m up/in  "
+                << "\033[1;38;5;245m^S\033[38;5;240m scope(⇅/↓/↑)  "
+                << "\033[1;38;5;245m←/→\033[38;5;240m up/in  "
                 << "\033[1;38;5;245m^B\033[38;5;240m pin  "
                 << "\033[1;38;5;245m^V\033[38;5;240m preview  "
                 << "\033[1;38;5;245m^W\033[38;5;240m ws  "
-                << "\033[1;38;5;245m^Y\033[38;5;240m mkdir  "
                 << "\033[1;38;5;245mEsc\033[38;5;240m exit\033[0m";
         }
 
@@ -1331,7 +1652,7 @@ static std::string run_picker_tui(const std::string &initial_root,
     std::string exit_notice;
 
     auto create_and_cd_query = [&]() -> bool {
-        std::string clean_q = trim(query);
+        std::string clean_q = trim(effective_query);
         if (clean_q.empty()) {
             toast = "Type a folder name first";
             return false;
@@ -1381,9 +1702,8 @@ static std::string run_picker_tui(const std::string &initial_root,
                                 root = filtered[sel_idx].full;
                                 is_workspace = false;
                                 query.clear();
-                                paths = load_pool(root, false);
-                                filtered = filter_and_rank(query, paths, frecency, bookmarks);
-                                sel_idx = 0;
+                                paths = load_pool(root, false, active_scope);
+                                refresh_results();
                                 toast = "Drilled into " + replace_home_tilde(root);
                                 render();
                             }
@@ -1394,9 +1714,8 @@ static std::string run_picker_tui(const std::string &initial_root,
                                 if (sl != std::string::npos && sl > 0) {
                                     root = root.substr(0, sl);
                                     is_workspace = false;
-                                    paths = load_pool(root, false);
-                                    filtered = filter_and_rank(query, paths, frecency, bookmarks);
-                                    sel_idx = 0;
+                                    paths = load_pool(root, false, active_scope);
+                                    refresh_results();
                                     toast = "Climbed up to " + replace_home_tilde(root);
                                     render();
                                 }
@@ -1419,6 +1738,15 @@ static std::string run_picker_tui(const std::string &initial_root,
             action_idx = 0;
             toast.clear();
             render();
+        } else if (c == 19) { // Ctrl+S -> Cycle Scope (Up+Down -> Down -> Up)
+            if (base_scope == ScopeMode::BOTH) base_scope = ScopeMode::DOWN;
+            else if (base_scope == ScopeMode::DOWN) base_scope = ScopeMode::UP;
+            else base_scope = ScopeMode::BOTH;
+            active_scope = base_scope;
+            paths = load_pool(root, is_workspace, active_scope);
+            refresh_results();
+            toast = std::string("Scope: ") + scope_name(active_scope);
+            render();
         } else if (c == 25) { // Ctrl+Y -> mkdir -p <query> & cd
             if (create_and_cd_query()) break;
             render();
@@ -1427,9 +1755,8 @@ static std::string run_picker_tui(const std::string &initial_root,
                 root = filtered[sel_idx].full;
                 is_workspace = false;
                 query.clear();
-                paths = load_pool(root, false);
-                filtered = filter_and_rank(query, paths, frecency, bookmarks);
-                sel_idx = 0;
+                paths = load_pool(root, false, active_scope);
+                refresh_results();
                 toast = "Drilled into " + replace_home_tilde(root);
                 render();
             }
@@ -1484,8 +1811,7 @@ static std::string run_picker_tui(const std::string &initial_root,
             action_menu = false;
             query.clear();
             toast.clear();
-            filtered = filter_and_rank(query, paths, frecency, bookmarks);
-            sel_idx = 0;
+            refresh_results();
             render();
         } else if (c == 22) { // Ctrl+V (Toggle preview)
             show_preview = !show_preview;
@@ -1501,29 +1827,25 @@ static std::string run_picker_tui(const std::string &initial_root,
         } else if (c == 23) { // Ctrl+W (Toggle Workspace)
             action_menu = false;
             is_workspace = !is_workspace;
-            paths = load_pool(root, is_workspace);
-            filtered = filter_and_rank(query, paths, frecency, bookmarks);
-            sel_idx = 0;
+            paths = load_pool(root, is_workspace, active_scope);
+            refresh_results();
             toast = is_workspace ? "Workspace mode" : "Project mode";
             render();
         } else if (c == 18) { // Ctrl+R (Rescan)
             action_menu = false;
             g_preview_cache.clear();
-            paths = load_pool(root, is_workspace);
-            filtered = filter_and_rank(query, paths, frecency, bookmarks);
-            sel_idx = 0;
+            paths = load_pool(root, is_workspace, active_scope);
+            refresh_results();
             toast = "Rescanned (" + std::to_string(paths.size()) + " dirs)";
             render();
         } else if (c == 127 || c == 8) { // Backspace (127) or Ctrl+H (8)
             if (c == 8 && query.empty()) {
-                // Ctrl+H when query is empty climbs up to parent directory
                 size_t sl = root.find_last_of('/');
                 if (sl != std::string::npos && sl > 0) {
                     root = root.substr(0, sl);
                     is_workspace = false;
-                    paths = load_pool(root, false);
-                    filtered = filter_and_rank(query, paths, frecency, bookmarks);
-                    sel_idx = 0;
+                    paths = load_pool(root, false, active_scope);
+                    refresh_results();
                     toast = "Climbed up to " + replace_home_tilde(root);
                     render();
                 }
@@ -1533,8 +1855,7 @@ static std::string run_picker_tui(const std::string &initial_root,
             } else if (!query.empty()) {
                 query.pop_back();
                 toast.clear();
-                filtered = filter_and_rank(query, paths, frecency, bookmarks);
-                sel_idx = 0;
+                refresh_results();
                 render();
             }
         } else if (c >= 32 && c < 127) { // Printable ASCII
@@ -1570,8 +1891,7 @@ static std::string run_picker_tui(const std::string &initial_root,
             } else {
                 query.push_back(static_cast<char>(c));
                 toast.clear();
-                filtered = filter_and_rank(query, paths, frecency, bookmarks);
-                sel_idx = 0;
+                refresh_results();
                 render();
             }
         }
@@ -1587,31 +1907,35 @@ static std::string run_picker_tui(const std::string &initial_root,
 // ── CLI Subcommands & Welcome Banner ───────────────────────────
 
 static void cmd_welcome() {
+    // Trigger frecency load so shell history is imported on first welcome!
+    auto frec = load_frecency();
     std::cout << "\n"
               << "  \033[1;38;5;42m╭──────────────────────────────────────────────────────────────╮\033[0m\n"
-              << "  \033[1;38;5;42m│\033[0m  ⚡ \033[1;97mDONGLE v" << DONGLE_VERSION << "\033[0m — \033[38;5;117mInstant Native Directory Navigation\033[0m       \033[1;38;5;42m│\033[0m\n"
-              << "  \033[1;38;5;42m│\033[0m     \033[38;5;242mCompiled C++17 Engine · <2ms Startup · Zero Dependencies\033[0m \033[1;38;5;42m│\033[0m\n"
+              << "  \033[1;38;5;42m│\033[0m  ⚡ \033[1;97mDONGLE v" << DONGLE_VERSION << "\033[0m — \033[38;5;117mBidirectional Fuzzy Directory Navigation\033[0m  \033[1;38;5;42m│\033[0m\n"
+              << "  \033[1;38;5;42m│\033[0m     \033[38;5;242mC++17 Engine · <2ms Startup · Searches Up ↑ & Down ↓\033[0m    \033[1;38;5;42m│\033[0m\n"
               << "  \033[1;38;5;42m╰──────────────────────────────────────────────────────────────╯\033[0m\n\n"
+              << "  \033[1;38;5;42m✓\033[0m Seeded frecency memory with \033[1;97m" << frec.size() << " directories\033[0m from your shell history!\n\n"
               << "  \033[1;97mTry these right now in your terminal:\033[0m\n"
-              << "    \033[1;38;5;42m/\033[0m              Press \033[1m/\033[0m on an empty prompt to open live search\n"
-              << "    \033[1;38;5;42mdg\033[0m \033[38;5;242m<query>\033[0m     Search project (auto-jumps if 1 exact match!)\n"
-              << "    \033[1;38;5;42mdgj\033[0m \033[38;5;242m<query>\033[0m    Instant headless jump to top match (no UI)\n"
-              << "    \033[1;38;5;42mdgw\033[0m            Search across all your projects / workspaces\n"
-              << "    \033[1;38;5;42mdgr\033[0m            Jump straight to current project root\n"
-              << "    \033[1;38;5;42mdgpin\033[0m          Pin (★) current folder to the top of results\n\n"
+              << "    \033[1;38;5;42m/\033[0m                 Press \033[1m/\033[0m on an empty prompt to search \033[1mUp ↑ & Down ↓\033[0m\n"
+              << "    \033[1;38;5;42mdg\033[0m \033[38;5;242m<name>\033[0m         Jumps immediately if exact folder exists; else opens suggestions\n"
+              << "    \033[1;38;5;42mdg up\033[0m \033[38;5;242m[query]\033[0m     Search \033[1monly upward\033[0m (3–5 layers above current folder) (\033[1mdgu\033[0m)\n"
+              << "    \033[1;38;5;42mdg down\033[0m \033[38;5;242m[query]\033[0m   Search \033[1monly downward\033[0m (3–5 layers inside current folder) (\033[1mdgd\033[0m)\n"
+              << "    \033[1;38;5;42mdgw\033[0m               Search across all your projects / workspaces\n"
+              << "    \033[1;38;5;42mdgpin\033[0m             Pin (\033[38;5;220m★\033[0m) current folder to the top of results\n\n"
               << "  \033[1;97mPower-User Keys Inside the Picker:\033[0m\n"
-              << "    \033[1;38;5;117mTab\033[0m            Open Action Menu (\033[1me\033[0m Editor, \033[1mo\033[0m Finder, \033[1my\033[0m Copy, \033[1mn\033[0m Mkdir)\n"
-              << "    \033[1;38;5;117m← / →\033[0m          Climb up to parent (\033[1m..\033[0m) or drill into selected folder\n"
-              << "    \033[1;38;5;117mCtrl+B\033[0m         Pin / Unpin selected directory (\033[38;5;220m★\033[0m)\n"
-              << "    \033[1;38;5;117mCtrl+V\033[0m         Toggle Live Preview Pane (Git branch, stack, README)\n"
-              << "    \033[1;38;5;117mCtrl+Y\033[0m         Create new directory from search query & cd into it\n\n";
+              << "    \033[1;38;5;117mCtrl+S\033[0m            Cycle search scope (\033[1mUp+Down ⇅\033[0m → \033[1mDown ↓\033[0m → \033[1mUp ↑\033[0m)\n"
+              << "    \033[1;38;5;117mup \033[38;5;242m<q>\033[0m / \033[1;38;5;117mdown \033[38;5;242m<q>\033[0m Type \033[1mup\033[0m or \033[1mdown\033[0m right inside the search bar to filter direction!\n"
+              << "    \033[1;38;5;117mTab\033[0m               Open Action Menu (\033[1me\033[0m Editor, \033[1mo\033[0m Finder, \033[1my\033[0m Copy, \033[1mn\033[0m Mkdir)\n"
+              << "    \033[1;38;5;117m← / →\033[0m             Climb up to parent (\033[1m..\033[0m) or drill into selected folder\n"
+              << "    \033[1;38;5;117mCtrl+B\033[0m            Pin / Unpin selected directory (\033[38;5;220m★\033[0m)\n"
+              << "    \033[1;38;5;117mCtrl+V\033[0m            Toggle Live Preview HUD (Git branch, stack, README)\n\n";
 }
 
 static void cmd_intro() {
     cmd_welcome();
     std::cout << C_BOLD << "  CLI Reference:\n" << C_RESET
               << "    dongle init <shell>   Output shell integration (zsh/bash/fish)\n"
-              << "    dongle jump <query>   Print #1 best-matching directory path\n"
+              << "    dongle import-history Import visited directories from shell history (~/.zsh_history, etc.)\n"
               << "    dongle root           Print current project root\n"
               << "    dongle recent         Show pinned & recently visited directories\n"
               << "    dongle pin [dir]      Pin / unpin a directory\n"
@@ -1620,9 +1944,17 @@ static void cmd_intro() {
               << "    dongle version        Show version\n\n";
 }
 
+static ScopeMode parse_scope_str(const std::string &s) {
+    std::string lo = to_lower(trim(s));
+    if (lo == "up" || lo == "u") return ScopeMode::UP;
+    if (lo == "down" || lo == "d") return ScopeMode::DOWN;
+    return ScopeMode::BOTH;
+}
+
 static int cmd_pick(int argc, char **argv) {
     bool is_workspace = false;
     bool auto_select = false;
+    ScopeMode scope = ScopeMode::BOTH;
     std::string query;
     std::string custom_root;
 
@@ -1632,6 +1964,12 @@ static int cmd_pick(int argc, char **argv) {
             is_workspace = true;
         } else if (a == "--auto-select" || a == "-1") {
             auto_select = true;
+        } else if (a == "--up") {
+            scope = ScopeMode::UP;
+        } else if (a == "--down") {
+            scope = ScopeMode::DOWN;
+        } else if (a == "--scope" && i + 1 < argc) {
+            scope = parse_scope_str(argv[++i]);
         } else if (a == "--rescan" || a == "-r") {
             // Always fresh in C++
         } else if (a == "--query" || a == "-q") {
@@ -1644,8 +1982,10 @@ static int cmd_pick(int argc, char **argv) {
         }
     }
 
-    std::string root = custom_root.empty() ? find_project_root(get_cwd()) : abspath(custom_root);
-    std::string chosen = run_picker_tui(root, is_workspace, query, auto_select);
+    // Search relative to user's actual current directory ($PWD) so 3-5 layers up & down
+    // are always centered around where the user currently is!
+    std::string root = custom_root.empty() ? get_cwd() : abspath(custom_root);
+    std::string chosen = run_picker_tui(root, is_workspace, scope, query, auto_select);
     if (!chosen.empty()) {
         record_visit(chosen);
         std::cout << chosen << "\n";
@@ -1655,24 +1995,25 @@ static int cmd_pick(int argc, char **argv) {
 }
 
 static int cmd_jump(int argc, char **argv) {
+    ScopeMode scope = ScopeMode::BOTH;
     std::string query;
     for (int i = 0; i < argc; ++i) {
+        std::string a = argv[i];
+        if (i == 0 && (a == "up" || a == "u" || a == "--up" || a == "-u" ||
+                       a == "down" || a == "d" || a == "--down" || a == "-d")) {
+            if (a == "--up" || a == "-u") scope = ScopeMode::UP;
+            else if (a == "--down" || a == "-d") scope = ScopeMode::DOWN;
+            else scope = parse_scope_str(a);
+            continue;
+        }
         if (!query.empty()) query += " ";
-        query += argv[i];
+        query += a;
     }
-    std::string root = find_project_root(get_cwd());
-    auto paths = scan_paths(root, false);
-    if (paths.size() <= 3 && abspath(root) == abspath(get_home())) {
-        auto ws_paths = scan_paths(root, true);
-        for (const auto &wp : ws_paths) paths.push_back(wp);
-    }
-    auto frecency = get_frecency_scores();
-    auto bm_vec = load_bookmarks();
-    std::set<std::string> bookmarks(bm_vec.begin(), bm_vec.end());
-    auto filtered = filter_and_rank(query, paths, frecency, bookmarks);
-    if (!filtered.empty()) {
-        record_visit(filtered[0].full);
-        std::cout << filtered[0].full << "\n";
+    std::string root = get_cwd();
+    std::string chosen = run_picker_tui(root, false, scope, query, true);
+    if (!chosen.empty()) {
+        record_visit(chosen);
+        std::cout << chosen << "\n";
         return 0;
     }
     return 1;
@@ -1680,30 +2021,36 @@ static int cmd_jump(int argc, char **argv) {
 
 static int cmd_scan(int argc, char **argv) {
     bool is_workspace = false;
+    ScopeMode scope = ScopeMode::BOTH;
     std::string custom_root;
     for (int i = 0; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--workspace" || a == "-w") is_workspace = true;
+        else if (a == "--up" || a == "up") scope = ScopeMode::UP;
+        else if (a == "--down" || a == "down") scope = ScopeMode::DOWN;
         else if (!a.empty() && a[0] != '-') custom_root = a;
     }
-    std::string root = custom_root.empty() ? find_project_root(get_cwd()) : abspath(custom_root);
-    auto paths = scan_paths(root, is_workspace);
+    std::string root = custom_root.empty() ? get_cwd() : abspath(custom_root);
+    auto paths = scan_paths(root, is_workspace, scope);
     std::cerr << "Scanned " << (is_workspace ? "workspaces" : root) << " (" << paths.size() << " paths)\n";
     return 0;
 }
 
 static int cmd_list(int argc, char **argv) {
     bool is_workspace = false;
+    ScopeMode scope = ScopeMode::BOTH;
     std::string custom_root;
     for (int i = 0; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--workspace" || a == "-w") is_workspace = true;
+        else if (a == "--up" || a == "up") scope = ScopeMode::UP;
+        else if (a == "--down" || a == "down") scope = ScopeMode::DOWN;
         else if (!a.empty() && a[0] != '-') custom_root = a;
     }
-    std::string root = custom_root.empty() ? find_project_root(get_cwd()) : abspath(custom_root);
-    auto paths = scan_paths(root, is_workspace);
+    std::string root = custom_root.empty() ? get_cwd() : abspath(custom_root);
+    auto paths = scan_paths(root, is_workspace, scope);
     for (const auto &p : paths) {
-        std::cout << p.display << "\n";
+        std::cout << p.display << "\t" << p.full << "\n";
     }
     return 0;
 }
@@ -1727,7 +2074,7 @@ static int cmd_recent() {
         for (const auto &kv : frec) sorted_frec.push_back({kv.second.last_visit, kv.first});
         std::sort(sorted_frec.rbegin(), sorted_frec.rend());
 
-        std::cout << "\n" << C_BOLD << "  Recent directories:" << C_RESET << "\n";
+        std::cout << "\n" << C_BOLD << "  Recent & historical directories (" << frec.size() << " tracked):" << C_RESET << "\n";
         int count = 0;
         for (const auto &item : sorted_frec) {
             if (++count > 20) break;
@@ -1770,9 +2117,21 @@ static int cmd_prune() {
     return 0;
 }
 
+static int cmd_import_history() {
+    auto frec = load_frecency();
+    int added = import_shell_history(frec);
+    save_frecency(frec);
+    std::cout << "  " << C_GREEN << "✓" << C_RESET << " Imported shell history! ("
+              << added << " new directories added, " << frec.size() << " total tracked)\n";
+    return 0;
+}
+
 static int cmd_doctor() {
+    auto frec = load_frecency();
     std::cout << "\n" << C_BOLD << C_CYAN << "  Dongle Doctor (v" << DONGLE_VERSION << " Native C++)" << C_RESET << "\n\n";
     std::cout << "  " << C_GREEN << "✓" << C_RESET << " Engine: Native C++17 Mach-O binary (<2ms startup)\n";
+    std::cout << "  " << C_GREEN << "✓" << C_RESET << " Bidirectional Scanner: 5 layers down ↓ + 4 layers up ↑\n";
+    std::cout << "  " << C_GREEN << "✓" << C_RESET << " Frecency & History Memory: " << C_BOLD << frec.size() << " directories tracked" << C_RESET << "\n";
 
     const char *sh_env = std::getenv("SHELL");
     std::string sh_name = sh_env ? sh_env : "zsh";
@@ -1820,10 +2179,51 @@ int main(int argc, char **argv) {
     std::string cmd = argv[1];
     if (cmd == "pick") return cmd_pick(argc - 2, argv + 2);
     if (cmd == "jump") return cmd_jump(argc - 2, argv + 2);
+    if (cmd == "up" || cmd == "u") {
+        std::vector<char *> p_args;
+        char uflag[] = "--up";
+        char aflag[] = "--auto-select";
+        p_args.push_back(uflag);
+        p_args.push_back(aflag);
+        std::string q;
+        for (int i = 2; i < argc; ++i) {
+            if (!q.empty()) q += " ";
+            q += argv[i];
+        }
+        char qflag[] = "--query";
+        std::vector<char> qbuf(q.begin(), q.end());
+        qbuf.push_back('\0');
+        if (!q.empty()) {
+            p_args.push_back(qflag);
+            p_args.push_back(qbuf.data());
+        }
+        return cmd_pick(static_cast<int>(p_args.size()), p_args.data());
+    }
+    if (cmd == "down" || cmd == "d") {
+        std::vector<char *> p_args;
+        char dflag[] = "--down";
+        char aflag[] = "--auto-select";
+        p_args.push_back(dflag);
+        p_args.push_back(aflag);
+        std::string q;
+        for (int i = 2; i < argc; ++i) {
+            if (!q.empty()) q += " ";
+            q += argv[i];
+        }
+        char qflag[] = "--query";
+        std::vector<char> qbuf(q.begin(), q.end());
+        qbuf.push_back('\0');
+        if (!q.empty()) {
+            p_args.push_back(qflag);
+            p_args.push_back(qbuf.data());
+        }
+        return cmd_pick(static_cast<int>(p_args.size()), p_args.data());
+    }
     if (cmd == "record") {
         record_visit((argc >= 3) ? argv[2] : get_cwd());
         return 0;
     }
+    if (cmd == "import-history") return cmd_import_history();
     if (cmd == "scan") return cmd_scan(argc - 2, argv + 2);
     if (cmd == "list") return cmd_list(argc - 2, argv + 2);
     if (cmd == "root") {
@@ -1862,13 +2262,15 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    // Fallback: `dongle <query>` opens picker with initial query
+    // Fallback: `dongle <query>` opens picker with --auto-select and initial query
     if (!cmd.empty() && cmd[0] != '-') {
         std::vector<char *> pick_args;
+        char aflag[] = "--auto-select";
         char qflag[] = "--query";
+        pick_args.push_back(aflag);
         pick_args.push_back(qflag);
         pick_args.push_back(argv[1]);
-        return cmd_pick(2, pick_args.data());
+        return cmd_pick(3, pick_args.data());
     }
 
     cmd_intro();

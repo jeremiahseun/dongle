@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="dongle",
-    version="0.6.0",
+    version="0.7.0",
     description="Fast, fuzzy directory navigation for any terminal",
     author="Dongle Contributors",
     packages=find_packages(),

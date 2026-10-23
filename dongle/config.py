@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 
 CACHE_FILE = Path.home() / ".dongle_cache.json"
 WORKSPACE_CACHE_FILE = Path.home() / ".dongle_workspace_cache.json"
