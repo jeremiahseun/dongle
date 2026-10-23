@@ -1,16 +1,19 @@
 import os
 from pathlib import Path
 
-VERSION = "0.3.2"
+VERSION = "0.6.0"
 
 CACHE_FILE = Path.home() / ".dongle_cache.json"
+WORKSPACE_CACHE_FILE = Path.home() / ".dongle_workspace_cache.json"
 FRECENCY_FILE = Path.home() / ".dongle_frecency.json"
+BOOKMARKS_FILE = Path.home() / ".dongle_bookmarks.json"
 
 SKIP_DIRS = {
     ".git", ".svn", ".hg", "node_modules", "__pycache__", ".cache",
     ".npm", ".yarn", "dist", "build", ".next", ".nuxt", "venv",
     ".venv", "env", ".env", ".tox", "target", "vendor", ".idea",
-    ".vscode", "coverage", ".mypy_cache", ".pytest_cache",
+    ".vscode", "coverage", ".mypy_cache", ".pytest_cache", "build_venv",
+    "Library", ".Trash", "Applications", "Pictures", "Music", "Movies",
 }
 
 ROOT_MARKERS = {
@@ -50,3 +53,8 @@ def get_max_dirs() -> int:
         return int(os.environ.get("DONGLE_MAX_DIRS", "5000"))
     except ValueError:
         return 5000
+
+
+def get_preview_enabled() -> bool:
+    val = os.environ.get("DONGLE_PREVIEW", "1").strip().lower()
+    return val not in ("0", "false", "no", "off")

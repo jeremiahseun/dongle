@@ -1,24 +1,25 @@
 <img width="256" height="200" alt="dongle" src="https://github.com/user-attachments/assets/c58d6923-0c32-4d6e-9897-8d422b321033" />
 
-# Dongle
+# Dongle ⚡
 
-> **Lightning-fast fuzzy directory navigation — for any terminal.**
+> **Instant (<2ms) native fuzzy directory navigation — for any terminal.**
 
 No more `cd ../../some/deep/nested/folder`. Press `/` and search.
 
 ```
   Project  ~/my-project  (42 dirs)
   / src comp
-  ❯ src/components/ui
-    src/components/auth
-    src/components/dashboard
-    src/components/forms/inputs
-    tests/components
+  ❯ ★ src/components/ui       │ 📁 ui (main)
+      src/components/auth     │  2 dirs, 5 files · 📦 Node/TS
+      src/components/forms    │   commit: feat: add button variants
+      tests/components        │   ▸ buttons/
+                              │   ▸ modals/
+                              │   • Button.tsx
   ─────────────────────────────────────────────────────────
-  ↑↓ nav   Enter select   ^W workspace   ^R rescan   Esc cancel
+  ↑↓ nav  Enter cd  Tab actions  ^H/^L up/in  ^B pin  ^V preview  ^W ws  ^Y mkdir  Esc exit
 ```
 
-Press **Enter**. You're there.
+Press **Enter** to jump there — or press **Tab** to open in Cursor/VS Code, reveal in Finder, copy the path, or create a folder on the fly.
 
 ---
 
@@ -37,67 +38,62 @@ curl -sSL https://raw.githubusercontent.com/jeremiahseun/dongle/main/install.sh 
 ```
 
 That's it. The installer:
-- Detects your OS (macOS / Linux) and architecture (ARM64 / x64)
-- Downloads a **single self-contained binary** — no Python, no dependencies
-- Adds `dongle` to your PATH
-- Wires up shell integration in `~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`
+- Compiles or downloads the **156 KB Native C++17 binary** — zero Python overhead, zero dependencies, `<2ms` startup
+- Adds `~/.dongle/bin` to your `PATH`
+- Wires up instant shell integration in `~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`
 
-Reload your shell and start using `/`.
-
-> **Prefer pip?** `pip install dongle` then add `eval "$(dongle init zsh)"` (or bash/fish) to your shell config.
-
-### Platform support
-
-| Platform | Status |
-|----------|--------|
-| macOS (Apple Silicon) | ✅ Full support |
-| macOS (Intel) | ✅ Full support |
-| Linux (x64) | ✅ Full support |
-| Linux (ARM64) | ✅ Full support |
-| Windows (WSL) | ✅ Works via WSL |
-| Windows (native) | 🔜 On the roadmap |
+Reload your shell (`source ~/.zshrc`) and press `/`.
 
 ---
 
 ## How to use
 
-### The basics
+### Shell Shortcuts
 
 | What you do | What happens |
 |-------------|-------------|
-| Press `/` on an empty prompt | Open directory search |
-| Press `Ctrl+O` anywhere | Open directory search (insert path at cursor) |
-| Press `Ctrl+/` anywhere | Same as Ctrl+O |
+| Press `/` on an empty prompt | Open live directory search |
+| Press `Ctrl+O` anywhere | Open directory search (inserts escaped path at cursor if prompt non-empty) |
+| Press `Ctrl+/` anywhere | Same as `Ctrl+O` |
 | Type `dg` | Open directory search |
-| Type `dg <query>` | Open search pre-filled with your query |
+| Type `dg <query>` | Open search pre-filled with query (**auto-jumps immediately if 1 match!**) |
+| Type `dgj <query>` | **Instant headless jump** to #1 best match without opening TUI |
 | Type `dgw` | Search across **all your projects** (workspace mode) |
 | Type `dgr` | Jump to project root instantly — no picker |
-| Type `dgl` | List all cached paths in the current project |
-| Type `dgs` | Re-scan and refresh the cache |
-| Type `dgrecent` | Show recently visited directories |
+| Type `dgpin` | Pin / unpin (`★`) the current directory |
+| Type `dgl` | List all paths in the current project |
+| Type `dgrecent` | Show pinned & recently visited directories |
 
-### Inside the picker
+### Inside the Picker
 
 | Key | Action |
 |-----|--------|
-| Type anything | Filter results live |
+| Type anything | Filter results live (substring, multi-segment, and acronym matching) |
 | `↑` / `↓` or `Ctrl+P` / `Ctrl+N` | Move selection |
-| `Enter` | Navigate to selected directory |
-| `Ctrl+W` | Switch to workspace search without closing |
-| `Ctrl+R` | Rescan the directory tree (refresh cache) |
+| `Enter` | Navigate (`cd`) to selected directory |
+| `←` / `→` or `Ctrl+H` / `Ctrl+L` | **Climb up (`..`)** to parent directory or **drill into** selected folder as new root |
+| `Tab` | Open **Action Menu** (`[e]` Cursor/VS Code, `[o]` Finder, `[y]` Copy path, `[p]` Pin, `[n]` Mkdir) |
+| `Ctrl+B` | Pin / Unpin selected directory (`★` floats to top) |
+| `Ctrl+V` | Toggle live right-pane Developer Preview HUD |
+| `Ctrl+Y` | **Create new directory (`mkdir -p`)** from current query and `cd` into it |
+| `Ctrl+W` | Toggle between Project and Workspace search without closing |
+| `Ctrl+R` | Rescan the directory tree |
 | `Ctrl+U` | Clear the current query |
 | `Esc` / `Ctrl+C` | Cancel |
 
-### Commands
+### CLI Commands
 
 ```
-dongle init <shell>    Output shell integration (bash / zsh / fish)
+dongle                 Show welcome banner & quick-start guide
+dongle init <shell>    Output shell integration (zsh / bash / fish)
+dongle jump <query>    Print #1 best-matching directory path
 dongle root            Print the project root for the current directory
-dongle recent          Show recently visited directories
-dongle scan            Pre-scan and cache the current directory
-dongle list            List all cached paths
+dongle recent          Show pinned & recently visited directories
+dongle pin [dir]       Pin or unpin a directory (default: current directory)
+dongle prune           Remove deleted directories from frecency & bookmarks
+dongle scan            Scan the current directory
+dongle list            List all discovered paths
 dongle doctor          Diagnose installation issues
-dongle update          Update to the latest version
 dongle version         Show version
 ```
 
@@ -105,133 +101,11 @@ dongle version         Show version
 
 ## Features
 
-### Google-style live search
-Results update on every keystroke. The picker stays open until you confirm or cancel — no flickering, no full-screen takeover.
-
-### Smart fuzzy matching
-- **Exact substring** — `comp` finds `src/components` before anything fuzzier
-- **Segment bonus** — `android` gives a huge boost when the path has an `/android/` segment
-- **Character sequence** — `scu` still finds `src/components/ui` as a fallback
-- **Match highlighting** — the matched portion lights up in the results list
-
-### Frecency — it learns what you use
-Every directory you navigate to is tracked by **frequency × recency**. When you open the picker with no query, your most-visited and most-recently-used directories float to the top automatically. The more you use Dongle, the smarter it gets.
-
-### Smart project root detection
-Dongle always searches from your **project root**, not just `$PWD`. If you're deep inside `ios/src/views/`, you can still find `android/` — Dongle walks upward and finds your `.git`, `package.json`, `Cargo.toml`, etc.
-
-### Workspace search
-Set `DONGLE_WORKSPACES` to a list of directories and `dgw` searches across all your projects at once:
-
-```bash
-export DONGLE_WORKSPACES="~/Documents/GitHub,~/Projects"
-```
-
-Press `Ctrl+W` inside any local search to switch to workspace mode on the fly.
-
-### `.gitignore` aware
-Dongle reads your `.gitignore` and a project-local `.dongleignore` file. `node_modules`, `dist`, `build`, and other noise are never shown.
-
-### Instant startup — zero terminal slowdown
-Shell integration loads in **under 100 ms** — you'll never notice it. The `dongle init` command that runs at shell startup imports nothing heavy; `prompt_toolkit` is only loaded when you actually open the picker.
-
-### Background cache warming
-When a new shell opens, a background scan warms the cache so your first search is always instant.
-
----
-
-## Configuration
-
-All settings are optional — Dongle works out of the box.
-
-```bash
-# Directories to search in workspace mode (dgw)
-export DONGLE_WORKSPACES="~/Documents/GitHub,~/Projects"
-
-# Fallback search root when outside a recognised project
-export DONGLE_SEARCH_DIR="~/Projects"
-
-# How deep to scan inside a project (default: 6)
-export DONGLE_MAX_DEPTH=8
-
-# How deep to scan inside workspace roots (default: 4)
-export DONGLE_WORKSPACE_DEPTH=4
-
-# Maximum number of directories to index (default: 5000)
-export DONGLE_MAX_DIRS=10000
-
-# Cache lifetime in seconds (default: 300 = 5 minutes)
-export DONGLE_CACHE_TTL=600
-
-# Extra directories to skip, comma-separated
-export DONGLE_SKIP_DIRS="dist,build,tmp,.output"
-```
-
-### Custom ignore patterns
-
-Create a `.dongleignore` file in any project root — same syntax as `.gitignore`:
-
-```
-# .dongleignore
-generated/
-*.tmp
-fixtures/large
-```
-
----
-
-## Skipped by default
-
-Dongle never shows: `.git`, `node_modules`, `__pycache__`, `dist`, `build`,
-`.next`, `.nuxt`, `venv`, `.venv`, `.tox`, `target`, `vendor`, `.idea`,
-`.vscode`, `coverage`, `.mypy_cache`, `.pytest_cache`, and more.
-
----
-
-## Performance
-
-Dongle is designed to stay out of your way.
-
-| Scenario | Time |
-|----------|------|
-| Shell startup (`dongle init`) | < 100 ms |
-| Search — 100 paths | < 1 ms |
-| Search — 500 paths | < 1 ms |
-| Search — 1 000 paths | ~1 ms |
-| Search — 5 000 paths | ~5 ms |
-
-Cache hits are instant. Background scans never block your prompt.
-
----
-
-## Why Dongle?
-
-| Tool | What it does |
-|------|-------------|
-| `cd` | Manual path typing — tedious for deep trees |
-| `autojump` / `zoxide` | Learns from history — great, but needs training time |
-| `fzf` | General-purpose fuzzy finder — powerful but requires extra setup |
-| **Dongle** | Instant visual project search + frecency, zero config, works on first run |
-
-Dongle is not trying to replace any of these — it's focused on one thing: **get to a directory inside your project, fast, visually, with no training period.**
-
----
-
-## Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for planned features including File Previews, Action Menus (`Tab` → open in VS Code / Finder), and native Windows support.
-
----
-
-## Contributing
-
-```bash
-git clone https://github.com/jeremiahseun/dongle
-cd dongle
-pip install -e .
-```
-
-Please open an issue before starting large features.
+- **⚡ Native C++17 Engine (`<2ms` startup)**: Single `156 KB` Mach-O/ELF binary compiled with `clang++ -O3`. Zero runtime dependencies, zero terminal lag.
+- **🔭 Developer Preview HUD (`Ctrl+V`)**: Shows active Git branch, latest commit message, automatic tech stack badges (`🦀 Rust`, `💙 Flutter`, `📦 Node/TS`, `🐍 Python`, `🐹 Go`, `⚡ C/C++`), file counts, and `README.md` snippet.
+- **🌲 Tree Drill-Down & Parent Climbing (`←` / `→`)**: Climb above your project root with `←` (`Ctrl+H`) or drill deep into any folder with `→` (`Ctrl+L`).
+- **🧠 Automatic `cd` Frecency + Bookmarks (`★`)**: Automatically learns from every `cd` in your shell (`chpwd` hook) and lets you pin favorite folders with `Ctrl+B` or `dgpin`.
+- **🛠️ Action Menu (`Tab`) & Mkdir on the Fly (`Ctrl+Y`)**: Open directories directly in Cursor/VS Code, reveal in Finder, copy paths to clipboard, or create missing directories on the fly.
 
 ---
 

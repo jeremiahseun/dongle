@@ -4,7 +4,7 @@
 
 __dongle_widget() {
     local chosen
-    chosen="$(dongle pick 2>/dev/tty)"
+    chosen="$(dongle pick </dev/tty 2>/dev/tty)"
 
     if [ $? -eq 0 ] && [ -n "$chosen" ]; then
         if [ -z "$BUFFER" ]; then
@@ -13,7 +13,9 @@ __dongle_widget() {
             zle -M "  → $display"
             zle reset-prompt
         else
-            LBUFFER="${LBUFFER}${chosen}"
+            # Escape spaces in path if inserting into command line
+            local escaped="${chosen// /\\ }"
+            LBUFFER="${LBUFFER}${escaped}"
         fi
     fi
     zle reset-prompt
@@ -45,7 +47,7 @@ bindkey "^]p" __dongle_widget   # Ctrl+] p fallback
 # dg — fuzzy search from current project root
 dg() {
     local chosen
-    chosen="$(dongle pick --query "$*" 2>/dev/tty)"
+    chosen="$(dongle pick --query "$*" </dev/tty 2>/dev/tty)"
     [ $? -eq 0 ] && [ -n "$chosen" ] && cd "$chosen"
 }
 
@@ -72,6 +74,9 @@ dgr() {
 # dgl — list all cached paths for current project
 dgl() { dongle list "$@"; }
 
+# dgpin — pin / unpin directory (default: current directory)
+dgpin() { dongle pin "$@"; }
+
 # dgrecent — show recently visited directories
 dgrecent() { dongle recent; }
 
@@ -79,8 +84,11 @@ dgrecent() { dongle recent; }
 # Checking the cache file age avoids spawning dongle on every shell open.
 __dongle_warm_cache() {
     local cache="$HOME/.dongle_cache.json"
-    # Refresh only if cache is older than 10 minutes or doesn't exist
-    if [[ ! -f "$cache" ]] || [[ $(( $(date +%s) - $(stat -f %m "$cache" 2>/dev/null || echo 0) )) -gt 600 ]]; then
+    local mtime=0
+    if [[ -f "$cache" ]]; then
+        mtime=$(stat -f %m "$cache" 2>/dev/null || stat -c %Y "$cache" 2>/dev/null || echo 0)
+    fi
+    if [[ ! -f "$cache" ]] || [[ $(( $(date +%s) - mtime )) -gt 600 ]]; then
         (dongle scan &>/dev/null &)
     fi
 }

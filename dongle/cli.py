@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 # Only lightweight import at module level — init/version need nothing heavy
-from dongle.config import VERSION
+from dongle.config import VERSION, CACHE_FILE, WORKSPACE_CACHE_FILE
 
 CYAN = "\033[36m"
 GREEN = "\033[32m"
@@ -35,21 +35,37 @@ def _read_shell_script(shell: str) -> str:
     return script_path.read_text()
 
 
+def _find_pick_binary() -> Path:
+    """Locate co-installed dongle-pick binary for both --onefile and --onedir bundles."""
+    exe_dir = Path(sys.executable).resolve().parent
+    candidates = [
+        exe_dir / "dongle-pick",
+        exe_dir.parent / "dongle-pick" / "dongle-pick",
+        Path.home() / ".dongle" / "bin" / "dongle-pick",
+        Path.home() / ".dongle" / "lib" / "dongle-pick" / "dongle-pick",
+    ]
+    for cand in candidates:
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return cand
+    which_pick = shutil.which("dongle-pick")
+    if which_pick:
+        return Path(which_pick)
+    return None
+
+
 def cmd_pick():
     """Interactive picker — prints chosen path to stdout."""
-    # In PyInstaller binary mode the picker lives in the co-installed dongle-pick
-    # binary (which has prompt_toolkit bundled). Delegate to it so the main
-    # dongle binary stays lightweight.
-    if hasattr(sys, '_MEIPASS'):
-        pick_bin = Path(sys.executable).parent / "dongle-pick"
-        if pick_bin.exists():
+    # In PyInstaller binary mode for the lightweight `dongle` binary (which excludes prompt_toolkit),
+    # delegate to `dongle-pick`. Avoid infinite recursion if we ARE already inside `dongle-pick`.
+    if hasattr(sys, '_MEIPASS') and Path(sys.executable).name == "dongle":
+        pick_bin = _find_pick_binary()
+        if pick_bin and pick_bin.resolve() != Path(sys.executable).resolve():
             os.execv(str(pick_bin), [str(pick_bin)] + sys.argv[1:])
-        # dongle-pick not found alongside the binary — fall through to pip path
 
     import argparse
-    # Lazy: only loaded when actually picking (pip install mode)
+    # Lazy: only loaded when actually picking
     from dongle.utils import patch_asyncio
-    from dongle.scanner import find_project_root, load_cache, scan_paths, CACHE_FILE
+    from dongle.scanner import find_project_root, load_cache, scan_paths, save_cache, get_workspace_cache_key
     from dongle.ui import run_picker
 
     patch_asyncio()
@@ -66,10 +82,13 @@ def cmd_pick():
     else:
         root = os.path.abspath(args.root)
 
-    cache_key = "WORKSPACE:" + root if args.workspace else root
-    cache_file = Path.home() / ".dongle_workspace_cache.json" if args.workspace else CACHE_FILE
+    cache_key = get_workspace_cache_key() if args.workspace else root
+    cache_file = WORKSPACE_CACHE_FILE if args.workspace else CACHE_FILE
 
     paths = None if args.rescan else load_cache(cache_key, cache_file)
+    if paths is None:
+        paths = scan_paths(root, is_workspace=args.workspace)
+        save_cache(cache_key, paths, cache_file)
 
     chosen = run_picker(root, paths, is_workspace=args.workspace, cwd=os.getcwd(), initial_query=args.query)
 
@@ -93,7 +112,7 @@ def cmd_pick():
 def cmd_scan():
     """Pre-scan and cache paths for a directory."""
     import argparse
-    from dongle.scanner import find_project_root, scan_paths, save_cache, CACHE_FILE
+    from dongle.scanner import find_project_root, scan_paths, save_cache, get_workspace_cache_key
 
     parser = argparse.ArgumentParser(description="Dongle scanner")
     parser.add_argument("root", nargs="?", default=None)
@@ -105,13 +124,11 @@ def cmd_scan():
     else:
         root = os.path.abspath(args.root)
 
-    cache_file = CACHE_FILE if not args.workspace else Path.home() / ".dongle_workspace_cache.json"
-    if cache_file.exists():
-        cache_file.unlink()
+    cache_file = WORKSPACE_CACHE_FILE if args.workspace else CACHE_FILE
+    cache_key = get_workspace_cache_key() if args.workspace else root
 
     sys.stderr.write(f"Scanning {'workspaces' if args.workspace else root}...\n")
     paths = scan_paths(root, is_workspace=args.workspace)
-    cache_key = "WORKSPACE:" + root if args.workspace else root
     save_cache(cache_key, paths, cache_file)
     sys.stderr.write(f"Cached {len(paths)} paths\n")
 
@@ -123,10 +140,14 @@ def cmd_list():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("root", nargs="?", default=os.getcwd())
+    parser.add_argument("--workspace", action="store_true")
     args = parser.parse_args()
     root = os.path.abspath(args.root)
-    for p in get_paths(root):
-        print(p)
+    for p in get_paths(root, is_workspace=args.workspace):
+        if isinstance(p, (tuple, list)):
+            print(f"{p[0]}\t{p[1]}")
+        else:
+            print(p)
 
 
 def cmd_root():
@@ -137,21 +158,58 @@ def cmd_root():
 
 def cmd_recent():
     """Print recently visited directories."""
-    from dongle.frecency import get_recent_dirs
+    from dongle.frecency import get_recent_dirs, get_bookmark_set
     dirs = get_recent_dirs(20)
-    if not dirs:
-        print(f"{DIM}  No recent directories yet. Start navigating with dg or /{RESET}")
+    bookmarks = get_bookmark_set()
+    if not dirs and not bookmarks:
+        print(f"{DIM}  No recent or pinned directories yet. Start navigating with dg or /{RESET}")
         return
-    print(f"\n{BOLD}  Recent directories:{RESET}")
-    for d in dirs:
-        display = d.replace(str(Path.home()), "~")
-        print(f"  {DIM}→{RESET}  {display}")
+    if bookmarks:
+        print(f"\n{BOLD}  Pinned directories (★):{RESET}")
+        for b in bookmarks:
+            display = b.replace(str(Path.home()), "~")
+            print(f"  {YELLOW}★{RESET}  {display}")
+    if dirs:
+        print(f"\n{BOLD}  Recent directories:{RESET}")
+        for d in dirs:
+            display = d.replace(str(Path.home()), "~")
+            star = f"{YELLOW}★{RESET}" if d in bookmarks else f"{DIM}→{RESET}"
+            print(f"  {star}  {display}")
     print()
+
+
+def cmd_bookmarks():
+    """Manage bookmarked / pinned directories."""
+    from dongle.frecency import get_bookmarks, toggle_bookmark
+    if len(sys.argv) >= 3:
+        sub = sys.argv[2]
+        target = os.path.abspath(sys.argv[3]) if len(sys.argv) >= 4 else os.getcwd()
+        if sub in ("add", "pin", "toggle"):
+            pinned = toggle_bookmark(target)
+            status = f"{GREEN}★ Pinned{RESET}" if pinned else f"{YELLOW}☆ Unpinned{RESET}"
+            print(f"  {status}: {target}")
+            return
+    bms = get_bookmarks()
+    if not bms:
+        print(f"{DIM}  No pinned directories yet. Press Ctrl+B inside the picker or run 'dongle pin'.{RESET}")
+        return
+    print(f"\n{BOLD}  Pinned directories:{RESET}")
+    for b in bms:
+        display = b.replace(str(Path.home()), "~")
+        print(f"  {YELLOW}★{RESET}  {display}")
+    print()
+
+
+def cmd_prune():
+    """Prune deleted directories from frecency, bookmarks, and cache."""
+    from dongle.frecency import prune_frecency
+    removed = prune_frecency()
+    print(f"  {GREEN}✓{RESET} Pruned {removed} non-existent directory entries from frecency & bookmarks.")
 
 
 def cmd_intro():
     print(f"""
-{BOLD}{CYAN}  Dongle{RESET} — Lightning-fast fuzzy directory navigation
+{BOLD}{CYAN}  Dongle v{VERSION}{RESET} — Lightning-fast fuzzy directory navigation
 {DIM}  https://github.com/jeremiahseun/dongle{RESET}
 
 {BOLD}  Navigation:{RESET}
@@ -160,12 +218,16 @@ def cmd_intro():
     {GREEN}dgw{RESET}           Workspace search (across all projects)
     {GREEN}dgr{RESET}           Jump to project root immediately
     {GREEN}dgl{RESET}           List all cached paths
+    {GREEN}dgrecent{RESET}      Show pinned & recently visited directories
     {GREEN}/{RESET}             Press on empty prompt to search
+    {GREEN}Ctrl+O{RESET}        Open picker anywhere (inserts path if prompt not empty)
 
 {BOLD}  Commands:{RESET}
     dongle init <shell>   Output shell integration (bash/zsh/fish)
     dongle root           Print current project root
-    dongle recent         Show recently visited directories
+    dongle recent         Show pinned & recently visited directories
+    dongle pin [dir]      Pin / unpin a directory (default: current directory)
+    dongle prune          Remove deleted directories from frecency & pins
     dongle scan           Pre-scan & cache current directory
     dongle doctor         Check if everything is set up correctly
     dongle update         Update Dongle to the latest version
@@ -174,7 +236,10 @@ def cmd_intro():
 {BOLD}  Picker keys:{RESET}
     {DIM}↑↓ / Ctrl+P/N{RESET}  Navigate results
     {DIM}Enter{RESET}           Go to selected directory
-    {DIM}Ctrl+W{RESET}          Switch to workspace search
+    {DIM}Tab{RESET}             Open Action Menu (VS Code / Cursor, Finder, Copy path, Pin)
+    {DIM}Ctrl+B{RESET}          Pin / Unpin selected directory (★ floats to top)
+    {DIM}Ctrl+V{RESET}          Toggle live directory preview pane
+    {DIM}Ctrl+W{RESET}          Toggle workspace search
     {DIM}Ctrl+R{RESET}          Rescan directory (refresh cache)
     {DIM}Ctrl+U{RESET}          Clear query
     {DIM}Esc / Ctrl+C{RESET}    Cancel
@@ -189,12 +254,17 @@ def cmd_intro():
 
 def cmd_doctor():
     """Diagnose installation issues."""
-    print(f"\n{BOLD}{CYAN}  Dongle Doctor{RESET}\n")
+    print(f"\n{BOLD}{CYAN}  Dongle Doctor (v{VERSION}){RESET}\n")
     issues = 0
 
     if hasattr(sys, '_MEIPASS'):
         print(f"  {GREEN}✓{RESET} Running as standalone binary")
-        print(f"  {GREEN}✓{RESET} Subcommands (pick, scan) are built-in")
+        pick_bin = _find_pick_binary()
+        if pick_bin:
+            print(f"  {GREEN}✓{RESET} dongle-pick binary found: {DIM}{pick_bin}{RESET}")
+        else:
+            print(f"  {RED}✗{RESET} dongle-pick binary NOT found alongside dongle")
+            issues += 1
     else:
         pick_path = shutil.which("dongle-pick")
         if pick_path:
@@ -252,7 +322,7 @@ def cmd_doctor():
     if ws:
         print(f"  {GREEN}✓{RESET} DONGLE_WORKSPACES set: {DIM}{ws}{RESET}")
     else:
-        print(f"  {YELLOW}⚠{RESET} DONGLE_WORKSPACES not set {DIM}(optional, needed for dgw){RESET}")
+        print(f"  {YELLOW}⚠{RESET} DONGLE_WORKSPACES not set {DIM}(optional, falls back to parent directory for dgw){RESET}")
 
     if os.path.exists("/dev/tty"):
         print(f"  {GREEN}✓{RESET} /dev/tty available")
@@ -341,6 +411,13 @@ def main():
         cmd_root()
     elif cmd == "recent":
         cmd_recent()
+    elif cmd in ("bookmarks", "pins"):
+        cmd_bookmarks()
+    elif cmd == "pin":
+        sys.argv.insert(2, "toggle")
+        cmd_bookmarks()
+    elif cmd == "prune":
+        cmd_prune()
     elif cmd == "init":
         if len(sys.argv) < 3:
             print("Usage: dongle init <shell>", file=sys.stderr)

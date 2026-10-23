@@ -4,24 +4,22 @@ Dongle is continuously evolving. Here is a list of features we are planning to b
 
 ## Planned Features
 
-- **Standalone Release Binaries**: Automate Github Actions to compile Dongle into native executable binaries using PyInstaller. This ensures users won't even need Python installed to use it.
-- **File Previews**: Introduce a right-hand pane in the picker to preview the directory's contents (top 5 files, `README.md` snippet, or git status).
-- **Smart Sorting ("Frecent" Tracking)**: Track frequently and recently visited directories to boost them to the top of the search results automatically.
-- **Action Menus**: Press `Tab` on a directory to reveal actions like "Open in VS Code", "Open in GUI file explorer", or "Run git status".
-- **Windows Support**: Ensure full compatibility with PowerShell and Windows Terminal.
+- **Windows Support**: Ensure full native compatibility with PowerShell and Windows Terminal.
 - **GUI Launcher**: An optional GUI wrapper for non-terminal enthusiasts.
-
-## In Progress
-
-- **Workspace Search (`dgw`)**: Cross-project search powered by the `DONGLE_WORKSPACES` environment variable.
-- **`.gitignore` Integration**: Automatically parse and respect `.gitignore` and `.dongleignore` files without manual configuration.
+- **Custom User Actions**: Allow users to define custom shell commands in `~/.dongle_actions.json` for the `Tab` menu.
 
 ## Completed ✅
 
-- **Instant Terminal UI**: Built an inline TUI using `prompt_toolkit`.
-- **Fuzzy Search Algorithm**: Smart substring and character sequence matching.
-- **Seamless Shell Integration**: Support for Bash, Zsh, and Fish without replacing `cd` or destroying shell environments.
-- **Auto Background Scans**: Keep cache perfectly warm via background execution.
+- **Live File & Directory Previews (`Ctrl+V`)**: Right-hand pane in the picker previewing git branch, directory/file counts, top contents, and `README.md` snippet.
+- **Action Menus (`Tab`)**: Press `Tab` on a directory to open in Cursor/VS Code, reveal in Finder, copy path to clipboard, or pin/unpin.
+- **Bookmarks / Pinning (`Ctrl+B` & `dongle pin`)**: Pin favorite directories with `★` and prune stale entries with `dongle prune`.
+- **Multi-Segment & Acronym Fuzzy Highlighting**: Highlights every matched character across contiguous, multi-word, and acronym searches.
+- **Standalone Release Binaries**: Automated GitHub Actions & macOS `--onedir` fast-startup bundles via PyInstaller.
+- **Smart Sorting ("Frecent" Tracking)**: Track frequently and recently visited directories to boost them to the top of search results.
+- **Workspace Search (`dgw`)**: Cross-project search powered by `DONGLE_WORKSPACES` (with automatic parent fallback).
+- **`.gitignore` & `.dongleignore` Integration**: Automatically parse and respect ignore rules.
+- **Instant Terminal UI**: Inline TUI using `prompt_toolkit`.
+- **Seamless Shell Integration**: Support for Bash, Zsh, and Fish without replacing `cd`.
 
 ---
 

@@ -15,59 +15,38 @@ jobs:
         include:
           - os: macos-latest
             artifact: dongle-darwin-arm64
-          - os: macos-14
+            cxx: clang++
+            flags: -arch arm64
+          - os: macos-latest
             artifact: dongle-darwin-x64
+            cxx: clang++
+            flags: -arch x86_64
           - os: ubuntu-latest
             artifact: dongle-linux-x64
+            cxx: g++
+            flags: ""
+          - os: ubuntu-24.04-arm
+            artifact: dongle-linux-arm64
+            cxx: g++
+            flags: ""
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: |
-          pip install pyinstaller
-          pip install -e .
-
-      - name: Build standalone binaries
-        run: |
-          # Picker binary — needs prompt_toolkit + pathspec bundled
-          pyinstaller \
-            --noconfirm \
-            --onefile \
-            --name ${{ matrix.artifact }}-pick \
-            --add-data "dongle/shell:dongle/shell" \
-            --hidden-import prompt_toolkit \
-            --hidden-import pathspec \
-            dongle/main.py
-
-          # Main CLI binary — lightweight dispatcher; needs pathspec for dongle scan
-          pyinstaller \
-            --noconfirm \
-            --onefile \
-            --name dongle \
-            --add-data "dongle/shell:dongle/shell" \
-            --hidden-import pathspec \
-            dongle/init_cmd.py
-
-      - name: Create release bundle
+      - name: Compile Native C++17 Binary
         run: |
           mkdir -p release_pack/${{ matrix.artifact }}
-          # Copy the compiled standalone binaries into our pack directory
-          cp dist/${{ matrix.artifact }}-pick release_pack/${{ matrix.artifact }}/dongle-pick
-          cp dist/dongle release_pack/${{ matrix.artifact }}/dongle
+          ${{ matrix.cxx }} -O3 -std=c++17 ${{ matrix.flags }} src/dongle.cpp -o release_pack/${{ matrix.artifact }}/dongle
+          strip release_pack/${{ matrix.artifact }}/dongle 2>/dev/null || true
+          chmod +x release_pack/${{ matrix.artifact }}/dongle
 
-          # Create convenience copies of the pick executable
-          cp release_pack/${{ matrix.artifact }}/dongle-pick release_pack/${{ matrix.artifact }}/dongle-scan
-          cp release_pack/${{ matrix.artifact }}/dongle-pick release_pack/${{ matrix.artifact }}/dongle-list
+          # Create convenience copies for subcommand entrypoints
+          cp release_pack/${{ matrix.artifact }}/dongle release_pack/${{ matrix.artifact }}/dongle-pick
+          cp release_pack/${{ matrix.artifact }}/dongle release_pack/${{ matrix.artifact }}/dongle-scan
+          cp release_pack/${{ matrix.artifact }}/dongle release_pack/${{ matrix.artifact }}/dongle-list
 
-          # Tar it up
           cd release_pack && tar -czf ../${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
 
       - name: Upload binary artifacts

@@ -2,8 +2,18 @@ import os
 import json
 import time
 from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
-from dongle.config import SKIP_DIRS, ROOT_MARKERS, CACHE_FILE, get_cache_ttl, get_workspace_depth, get_max_depth, get_max_dirs
+from dongle.config import (
+    SKIP_DIRS,
+    ROOT_MARKERS,
+    CACHE_FILE,
+    WORKSPACE_CACHE_FILE,
+    get_cache_ttl,
+    get_workspace_depth,
+    get_max_depth,
+    get_max_dirs,
+)
 
 
 def find_project_root(start_dir: str) -> str:
@@ -12,7 +22,21 @@ def find_project_root(start_dir: str) -> str:
     for parent in [curr] + list(curr.parents):
         if any((parent / m).exists() for m in ROOT_MARKERS):
             return str(parent)
+    fallback = os.environ.get("DONGLE_SEARCH_DIR", "").strip()
+    if fallback:
+        expanded = os.path.expanduser(fallback)
+        if os.path.isdir(expanded):
+            return os.path.abspath(expanded)
     return str(curr)
+
+
+def get_workspace_cache_key() -> str:
+    """Build a deterministic cache key for the configured workspace directories."""
+    raw = os.environ.get("DONGLE_WORKSPACES", "").strip()
+    if not raw:
+        raw = os.environ.get("DONGLE_SEARCH_DIR", "").strip()
+    dirs = [os.path.abspath(os.path.expanduser(d.strip())) for d in raw.split(",") if d.strip()]
+    return "WORKSPACE:" + "|".join(dirs)
 
 
 def load_ignore_spec(root: str):
@@ -24,7 +48,10 @@ def load_ignore_spec(root: str):
     for filename in (".gitignore", ".dongleignore"):
         p = Path(root) / filename
         if p.exists():
-            patterns.extend(p.read_text().splitlines())
+            try:
+                patterns.extend(p.read_text(errors="ignore").splitlines())
+            except Exception:
+                pass
     return PathSpec.from_lines(GitWildMatchPattern, patterns)
 
 
@@ -34,12 +61,17 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
     max_dirs = get_max_dirs()
 
     if is_workspace:
-        workspace_raw = os.environ.get("DONGLE_WORKSPACES", "")
+        workspace_raw = os.environ.get("DONGLE_WORKSPACES", "").strip()
+        if not workspace_raw:
+            workspace_raw = os.environ.get("DONGLE_SEARCH_DIR", "").strip()
         workspace_dirs = [os.path.expanduser(d.strip()) for d in workspace_raw.split(",") if d.strip()]
+        if not workspace_dirs:
+            # Fallback to parent of current project root so workspace search is still useful out of the box
+            workspace_dirs = [str(Path(root).parent)]
         max_depth = get_workspace_depth()
 
         for ws_dir in workspace_dirs:
-            ws_path = Path(ws_dir)
+            ws_path = Path(ws_dir).resolve()
             if not ws_path.exists():
                 continue
 
@@ -48,7 +80,7 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
             ws_str = str(ws_path)
 
             for curr_root, dirs, _files in os.walk(ws_path, topdown=True):
-                dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+                dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
 
                 # Optimized: os.path.relpath is ~3x faster than pathlib.Path().relative_to() in hot loops
                 rel_to_ws = os.path.relpath(curr_root, ws_str)
@@ -67,12 +99,13 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
                     dirs[:] = []
     else:
         ignore_spec = load_ignore_spec(root)
-        root_path = Path(root)
-        max_depth = get_max_depth()
+        root_path = Path(root).resolve()
+        is_home = (root_path == Path.home().resolve())
+        max_depth = min(get_max_depth(), 3) if is_home else get_max_depth()
         root_str = str(root_path)
 
         for curr_root, dirs, _files in os.walk(root_path, topdown=True):
-            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
 
             # Optimized: os.path.relpath is ~3x faster than pathlib.Path().relative_to() in hot loops
             rel_str = os.path.relpath(curr_root, root_str)
@@ -102,7 +135,7 @@ def scan_paths(root: str, is_workspace: bool = False) -> list:
     return paths
 
 
-def load_cache(cache_key: str, cache_file: Path = CACHE_FILE) -> list:
+def load_cache(cache_key: str, cache_file: Path = CACHE_FILE) -> Optional[list]:
     """Return cached paths if they exist and are within the TTL."""
     if not cache_file.exists():
         return None
@@ -116,7 +149,7 @@ def load_cache(cache_key: str, cache_file: Path = CACHE_FILE) -> list:
     return None
 
 
-def save_cache(cache_key: str, paths: list, cache_file: Path = CACHE_FILE):
+def save_cache(cache_key: str, paths: list, cache_file: Path = CACHE_FILE) -> None:
     """Persist paths to the cache file."""
     data = {}
     if cache_file.exists():
@@ -125,13 +158,18 @@ def save_cache(cache_key: str, paths: list, cache_file: Path = CACHE_FILE):
         except Exception:
             pass
     data[cache_key] = {"timestamp": time.time(), "paths": paths}
-    cache_file.write_text(json.dumps(data))
+    try:
+        cache_file.write_text(json.dumps(data))
+    except Exception:
+        pass
 
 
-def get_paths(root: str) -> list:
+def get_paths(root: str, is_workspace: bool = False) -> list:
     """Return paths for root, using cache when available."""
-    paths = load_cache(root)
+    cache_key = get_workspace_cache_key() if is_workspace else root
+    cache_file = WORKSPACE_CACHE_FILE if is_workspace else CACHE_FILE
+    paths = load_cache(cache_key, cache_file)
     if paths is None:
-        paths = scan_paths(root)
-        save_cache(root, paths)
+        paths = scan_paths(root, is_workspace=is_workspace)
+        save_cache(cache_key, paths, cache_file)
     return paths

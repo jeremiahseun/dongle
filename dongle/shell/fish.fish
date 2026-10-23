@@ -3,14 +3,14 @@
 #   dongle init fish | source
 
 function __dongle_widget
-    set chosen (dongle pick 2>/dev/tty)
+    set chosen (dongle pick </dev/tty 2>/dev/tty)
     if test $status -eq 0 -a -n "$chosen"
         if test -z (commandline)
             cd $chosen
             echo "  → "(pwd | string replace $HOME "~")
             commandline -f repaint
         else
-            commandline -i $chosen
+            commandline -i (string escape -- $chosen)
         end
     end
     commandline -f repaint
@@ -18,7 +18,11 @@ end
 
 function __dongle_slash
     if test -z (commandline)
-        __dongle_widget
+        if test -c /dev/tty
+            __dongle_widget
+        else
+            commandline -i "/"
+        end
     else
         commandline -i "/"
     end
@@ -26,10 +30,11 @@ end
 
 bind "/"  __dongle_slash
 bind \c_  __dongle_widget   # Ctrl+/
+bind \co  __dongle_widget   # Ctrl+O
 
 # dg — fuzzy search from current project root
 function dg
-    set chosen (dongle pick --query "$argv" 2>/dev/tty)
+    set chosen (dongle pick --query "$argv" </dev/tty 2>/dev/tty)
     and cd $chosen
 end
 
@@ -59,6 +64,11 @@ end
 # dgl — list all cached paths for current project
 function dgl
     dongle list $argv
+end
+
+# dgpin — pin / unpin directory
+function dgpin
+    dongle pin $argv
 end
 
 # dgrecent — show recently visited directories

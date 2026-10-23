@@ -3,7 +3,7 @@
 
 a = Analysis(
     ['dongle/init_cmd.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
     datas=[('dongle/shell', 'dongle/shell')],
     hiddenimports=['pathspec'],

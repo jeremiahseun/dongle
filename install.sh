@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────
-# Dongle Installer / Updater
+# Dongle Installer / Updater (Native C++17 Engine)
 # Usage: curl -sSL https://raw.githubusercontent.com/jeremiahseun/dongle/main/install.sh | bash
 # ──────────────────────────────────────────────
 
@@ -24,7 +24,7 @@ error()  { echo -e "  ${RED}✗ ${*}${RESET}"; exit 1; }
 header() { echo -e "\n${BOLD}${*}${RESET}"; }
 dim()    { echo -e "  ${DIM}${*}${RESET}"; }
 
-header "Dongle Installer / Updater"
+header "⚡ Dongle Installer / Updater"
 echo ""
 
 # ── Detect OS and Architecture ────────────────
@@ -54,102 +54,84 @@ log "Detected platform: ${BOLD}${PLATFORM}${RESET}"
 # ── Version helpers ───────────────────────────
 
 get_latest_tag() {
-    curl -sSL "https://api.github.com/repos/${REPO}/releases/latest" \
+    curl -sSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
         | grep '"tag_name"' | head -1 \
-        | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
+        | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/' || true
 }
 
 strip_v() { echo "${1#v}"; }
 
 get_installed_version() {
-    if command -v dongle &>/dev/null; then
-        dongle version 2>/dev/null | awk '{print $2}'
+    if [ -x "$INSTALL_DIR/dongle" ]; then
+        "$INSTALL_DIR/dongle" version 2>/dev/null | awk '{print $2}' || true
+    elif command -v dongle &>/dev/null; then
+        dongle version 2>/dev/null | awk '{print $2}' || true
     fi
 }
 
-# Returns "pip", "binary", or "" (not installed)
-detect_install_type() {
-    if ! command -v dongle &>/dev/null; then
-        echo ""
-        return
-    fi
-    local PYTHON=""
-    for py in python3 python; do
-        if command -v "$py" &>/dev/null; then PYTHON="$py"; break; fi
-    done
-    if [ -n "$PYTHON" ] && $PYTHON -m pip show dongle &>/dev/null 2>&1; then
-        echo "pip"
-        return
-    fi
-    echo "binary"
-}
+# ── Compile Native C++17 Engine from Source ───
+compile_native_from_source() {
+    header "Compiling Native C++17 Engine (<2ms startup)..."
 
-# ── Install via pip ───────────────────────────
-install_via_pip() {
-    local mode="${1:-install}"
-    header "$([ "$mode" = "upgrade" ] && echo "Upgrading via pip..." || echo "Installing via pip...")"
-
-    local PYTHON=""
-    for py in python3 python; do
-        if command -v "$py" &>/dev/null; then PYTHON="$py"; break; fi
+    local CXX=""
+    for compiler in clang++ g++ c++; do
+        if command -v "$compiler" &>/dev/null; then
+            CXX="$compiler"
+            break
+        fi
     done
 
-    if [ -z "$PYTHON" ]; then return 1; fi
-
-    local py_major py_minor
-    py_major=$($PYTHON -c "import sys; print(sys.version_info.major)")
-    py_minor=$($PYTHON -c "import sys; print(sys.version_info.minor)")
-
-    if [ "$py_major" -lt 3 ] || { [ "$py_major" -eq 3 ] && [ "$py_minor" -lt 9 ]; }; then
-        warn "Python $py_major.$py_minor found, but 3.9+ required. Falling back to binary."
+    if [ -z "$CXX" ]; then
         return 1
     fi
 
-    if ! $PYTHON -m pip --version &>/dev/null; then
-        warn "pip not found. Falling back to binary."
-        return 1
-    fi
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
 
-    ok "Python $py_major.$py_minor with pip found"
-
-    if $PYTHON -m pip install --upgrade --user dongle 2>/dev/null; then
-        ok "Dongle $([ "$mode" = "upgrade" ] && echo "upgraded" || echo "installed") via pip (user)"
-    elif $PYTHON -m pip install --upgrade dongle 2>/dev/null; then
-        ok "Dongle $([ "$mode" = "upgrade" ] && echo "upgraded" || echo "installed") via pip (system)"
+    local src_file=""
+    if [ -f "src/dongle.cpp" ]; then
+        src_file="src/dongle.cpp"
+        log "Using local src/dongle.cpp..."
     else
-        warn "pip install failed. Falling back to binary."
-        return 1
+        log "Fetching latest src/dongle.cpp from GitHub..."
+        if ! curl -fsSL "https://raw.githubusercontent.com/${REPO}/main/src/dongle.cpp" -o "${tmp_dir}/dongle.cpp"; then
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+        src_file="${tmp_dir}/dongle.cpp"
     fi
 
-    local user_base
-    user_base=$($PYTHON -m site --user-base 2>/dev/null || true)
-    local py_bin="$HOME/.local/bin"
-    if [ -n "$user_base" ]; then
-        py_bin="${user_base}/bin"
+    log "Compiling with ${CXX} -O3 -std=c++17..."
+    mkdir -p "$INSTALL_DIR"
+    rm -rf "$HOME/.dongle/lib" 2>/dev/null || true
+
+    if "$CXX" -O3 -std=c++17 "$src_file" -o "$INSTALL_DIR/dongle" 2>/dev/null; then
+        strip "$INSTALL_DIR/dongle" 2>/dev/null || true
+        chmod +x "$INSTALL_DIR/dongle"
+        ln -sf "$INSTALL_DIR/dongle" "$INSTALL_DIR/dongle-pick"
+        ln -sf "$INSTALL_DIR/dongle" "$INSTALL_DIR/dongle-scan"
+        ln -sf "$INSTALL_DIR/dongle" "$INSTALL_DIR/dongle-list"
+        rm -rf "$tmp_dir"
+        ok "Compiled & installed native binary at ${INSTALL_DIR}/dongle"
+        add_to_path "$INSTALL_DIR"
+        return 0
     fi
 
-    if [[ ":$PATH:" != *":$py_bin:"* ]]; then
-        add_to_path "$py_bin"
-    fi
-
-    return 0
+    rm -rf "$tmp_dir"
+    return 1
 }
 
 # ── Download pre-built binary ─────────────────
 install_via_binary() {
     local mode="${1:-install}"
-    header "$([ "$mode" = "upgrade" ] && echo "Upgrading binary..." || echo "Installing standalone binary...")"
+    header "$([ "$mode" = "upgrade" ] && echo "Upgrading binary..." || echo "Downloading standalone binary...")"
 
-    # Map platform to the artifact name used by the CI release workflow
     local artifact
     case "$PLATFORM" in
         darwin-arm64) artifact="dongle-darwin-arm64" ;;
         darwin-x64)   artifact="dongle-darwin-x64"   ;;
         linux-x64)    artifact="dongle-linux-x64"    ;;
-        linux-arm64)
-            warn "No pre-built binary for Linux ARM64 yet. Trying pip..."
-            return 1
-            ;;
+        linux-arm64)  artifact="dongle-linux-arm64"  ;;
         *) error "No pre-built binary for platform: $PLATFORM" ;;
     esac
 
@@ -160,7 +142,6 @@ install_via_binary() {
     fi
     ok "Latest release: ${latest_tag}"
 
-    # The CI uploads platform-specific tarballs, e.g. dongle-darwin-arm64.tar.gz
     local tarball="${artifact}.tar.gz"
     local download_url="https://github.com/${REPO}/releases/download/${latest_tag}/${tarball}"
 
@@ -170,30 +151,20 @@ install_via_binary() {
     tmp_dir=$(mktemp -d)
     trap "rm -rf '$tmp_dir'" EXIT
 
-    # Download and capture HTTP status code separately from the body
     local http_code
     http_code=$(curl -sSL -w "%{http_code}" -o "${tmp_dir}/${tarball}" "${download_url}")
 
-    if [ "$http_code" != "200" ]; then
-        error "Download failed (HTTP ${http_code}). No binary release found for ${artifact} at ${latest_tag}.
-         Check https://github.com/${REPO}/releases for available assets."
-    fi
-
-    # Sanity-check: make sure it's actually a gzip archive, not an HTML error page
-    if ! tar -tzf "${tmp_dir}/${tarball}" &>/dev/null; then
-        error "Downloaded file is not a valid archive. The release may not include pre-built binaries yet.
-         Try pip: pip install dongle"
+    if [ "$http_code" != "200" ] || ! tar -tzf "${tmp_dir}/${tarball}" &>/dev/null; then
+        error "Download failed (HTTP ${http_code}). Check https://github.com/${REPO}/releases"
     fi
 
     log "Extracting..."
     tar -xzf "${tmp_dir}/${tarball}" -C "${tmp_dir}"
 
-    # Install: copy the extracted bundle to INSTALL_DIR
-    # The tarball contains a top-level directory named after the artifact
     mkdir -p "$INSTALL_DIR"
+    rm -rf "$HOME/.dongle/lib" 2>/dev/null || true
     cp -r "${tmp_dir}/${artifact}/"* "$INSTALL_DIR/"
 
-    # Ensure all entry-point binaries are executable
     chmod +x \
         "$INSTALL_DIR/dongle" \
         "$INSTALL_DIR/dongle-pick" \
@@ -210,8 +181,6 @@ install_via_binary() {
 
 # ── Cache shell init scripts ──────────────────
 cache_init_scripts() {
-    # Pre-generate and cache shell init scripts so .zshrc/.bashrc can source them
-    # directly (no subprocess spawned on every shell open).
     local init_dir="$HOME/.dongle"
     mkdir -p "$init_dir"
 
@@ -227,7 +196,7 @@ cache_init_scripts() {
 add_to_path() {
     local bin_dir="$1"
     local shell_name
-    shell_name=$(basename "$SHELL")
+    shell_name=$(basename "${SHELL:-zsh}")
 
     case "$shell_name" in
         bash)
@@ -246,14 +215,14 @@ add_to_path() {
             ;;
     esac
 
-    ok "Added $bin_dir to PATH"
+    ok "Ensured $bin_dir is in PATH"
 }
 
 add_shell_integration() {
     local shell_name
-    shell_name=$(basename "$SHELL")
+    shell_name=$(basename "${SHELL:-zsh}")
 
-    header "Shell Integration  ($shell_name)"
+    header "Shell Integration ($shell_name)"
 
     local rc_file init_line reload_cmd
 
@@ -276,20 +245,19 @@ add_shell_integration() {
             ;;
         *)
             warn "Shell '$shell_name' not recognised. Add manually:"
-            echo '    [ -f ~/.dongle/bash_init.sh ] && source ~/.dongle/bash_init.sh  # bash'
-            echo '    [ -f ~/.dongle/zsh_init.zsh ] && source ~/.dongle/zsh_init.zsh  # zsh'
-            echo '    dongle init fish | source                                        # fish'
+            echo '    [ -f ~/.dongle/zsh_init.zsh ] && source ~/.dongle/zsh_init.zsh'
             return
             ;;
     esac
 
-    # Migrate existing eval-based integration to the faster source-based approach
     if [ -f "$rc_file" ] && grep -qF 'eval "$(dongle init' "$rc_file"; then
         sed -i.bak 's|eval "\$(dongle init zsh)"|[ -f ~/.dongle/zsh_init.zsh ] \&\& source ~/.dongle/zsh_init.zsh|g' "$rc_file"
         sed -i.bak 's|eval "\$(dongle init bash)"|[ -f ~/.dongle/bash_init.sh ] \&\& source ~/.dongle/bash_init.sh|g' "$rc_file"
-        ok "Migrated shell integration to faster source-based init in $rc_file"
-    elif [ -f "$rc_file" ] && grep -qF "dongle" "$rc_file"; then
-        ok "Shell integration already in $rc_file"
+        ok "Migrated shell integration to source-based init in $rc_file"
+    elif [ -f "$rc_file" ] && grep -qF "zsh_init.zsh" "$rc_file"; then
+        ok "Shell integration already configured in $rc_file"
+    elif [ -f "$rc_file" ] && grep -qF "bash_init.sh" "$rc_file"; then
+        ok "Shell integration already configured in $rc_file"
     else
         echo "" >> "$rc_file"
         echo "# Dongle — fast fuzzy directory navigation" >> "$rc_file"
@@ -304,67 +272,22 @@ add_shell_integration() {
 
 RELOAD_CMD=""
 
-INSTALLED_VERSION=$(get_installed_version)
-INSTALL_TYPE=$(detect_install_type)
-
-if [ -n "$INSTALLED_VERSION" ]; then
-    # ── Already installed: check for update ──
-    log "Found existing install: dongle ${BOLD}${INSTALLED_VERSION}${RESET}"
-    log "Checking for updates..."
-
-    LATEST_TAG=$(get_latest_tag)
-    LATEST_VERSION=$(strip_v "$LATEST_TAG")
-
-    if [ -z "$LATEST_VERSION" ]; then
-        warn "Could not reach GitHub to check for updates. Try again later."
-        exit 0
-    fi
-
-    if [ "$INSTALLED_VERSION" = "$LATEST_VERSION" ]; then
-        echo ""
-        ok "Already up to date  (${BOLD}v${INSTALLED_VERSION}${RESET})"
-        echo ""
-        dim "Run 'dongle doctor' if something seems wrong."
-        echo ""
-        exit 0
-    fi
-
-    echo ""
-    log "Update available: ${BOLD}v${INSTALLED_VERSION}${RESET} → ${GREEN}${BOLD}v${LATEST_VERSION}${RESET}"
-    echo ""
-
-    if [ "$INSTALL_TYPE" = "pip" ]; then
-        install_via_pip "upgrade" || install_via_binary "upgrade"
-    else
-        install_via_binary "upgrade"
-    fi
+if compile_native_from_source; then
     cache_init_scripts
-
+    add_shell_integration
 else
-    # ── Fresh install ──
-    if install_via_pip "install"; then
-        log "Installed via pip"
-    else
-        install_via_binary "install"
-    fi
+    install_via_binary "install"
     cache_init_scripts
     add_shell_integration
 fi
 
-# ── Done ──────────────────────────────────────
-header "Done!"
-echo ""
+# ── Show Welcome View ─────────────────────────
+if [ -x "$INSTALL_DIR/dongle" ]; then
+    "$INSTALL_DIR/dongle" welcome || true
+fi
+
 if [ -n "$RELOAD_CMD" ]; then
     echo -e "  Reload your shell to start using Dongle:"
-    echo -e "  ${BOLD}${RELOAD_CMD}${RESET}"
+    echo -e "  ${BOLD}${GREEN}${RELOAD_CMD}${RESET}"
     echo ""
 fi
-echo -e "  ${CYAN}Quick start:${RESET}"
-echo -e "  Press ${BOLD}/${RESET} on an empty prompt    → open directory search"
-echo -e "  Press ${BOLD}Ctrl+O${RESET} anywhere          → open directory search"
-echo -e "  Type  ${BOLD}dg${RESET}                       → same as /"
-echo -e "  Type  ${BOLD}dgw${RESET}                      → search across all your projects"
-echo -e "  Type  ${BOLD}dgr${RESET}                      → jump to project root instantly"
-echo ""
-echo -e "  ${CYAN}Docs:${RESET} https://github.com/${REPO}"
-echo ""

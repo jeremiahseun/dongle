@@ -3,7 +3,7 @@
 
 a = Analysis(
     ['dongle/main.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
     datas=[('dongle/shell', 'dongle/shell')],
     hiddenimports=['prompt_toolkit', 'pathspec'],

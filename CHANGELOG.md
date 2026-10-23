@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-10-23
+### Added
+- **Native C++17 Engine (`src/dongle.cpp`)**: Rebuilt the entire scanner, matcher, frecency engine, and interactive TUI in zero-dependency C++17 (`clang++ -O3`). Startup + directory scan time dropped from ~6.1 seconds (PyInstaller) to **<4 milliseconds** (156 KB binary).
+- **Tree Drill-Down & Parent Climbing (`←` / `→` or `Ctrl+H` / `Ctrl+L`)**: Climb up to the parent directory (`..`) or lock into the highlighted folder as the new search root without leaving the picker.
+- **Automatic `cd` Frecency Tracking (`chpwd` / `PROMPT_COMMAND`)**: Automatically records every directory you visit in your terminal so frecency rankings always reflect your real workflow.
+- **Instant Jump (`dgj <query>` & `dg <query>` Smart Auto-Select)**: `dg <query>` automatically jumps without opening the TUI when there is an exact single match, and `dgj <query>` performs a headless jump to the #1 match in `<4ms`.
+- **Create Directory on the Fly (`Ctrl+Y` / `Tab -> n`)**: Create a new directory directly from your search query (`mkdir -p`) and `cd` into it immediately.
+- **Rich Developer Preview HUD (`Ctrl+V`)**: Displays active Git branch, latest commit message (from `.git/logs/HEAD`), automatic tech stack badges (`🦀 Rust`, `💙 Flutter`, `📦 Node/TS`, `🐍 Python`, `🐹 Go`, `⚡ C/C++`), file/folder counts, and `README.md` snippet.
+- **Interactive Action Menu (`Tab`)**: Open in Cursor / VS Code (`e`), reveal in Finder (`o`), copy path to clipboard (`y`), pin/unpin (`p`), or create folder (`n`).
+- **Directory Bookmarks / Pinning (`Ctrl+B`, `dongle pin`, `dgpin`) & Pruning (`dongle prune`)**: Pin favorite directories (`★`) to the top of results and prune deleted directories.
+- **First-Time Welcome Banner (`dongle welcome`)**: Styled onboarding screen shown upon installation and when running `dongle`.
+
 ## [0.2.9] - 2026-02-24
 ### Changed
 - Increased the search limit from 8 to 50 results in interactive picker.
