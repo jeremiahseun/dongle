@@ -25,7 +25,9 @@ Press **Enter** to jump there — or press **Tab** to open in Cursor/VS Code, re
 
 ## Demo
 
-https://github.com/user-attachments/assets/6460e432-f732-4d4b-8324-1308ee36460c
+https://github.com/user-attachments/assets/43702b03-e262-4154-a566-f1e46d771dc0
+
+
 
 ---
 
