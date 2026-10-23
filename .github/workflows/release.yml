@@ -30,7 +30,7 @@ jobs:
             cxx: g++
             flags: ""
 
-    runs-on: ${{ matrix.os }}
+    runs-on: \${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -52,8 +52,8 @@ jobs:
       - name: Upload binary artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.tar.gz
+          name: \${{ matrix.artifact }}
+          path: \${{ matrix.artifact }}.tar.gz
 
   release:
     needs: build
@@ -71,7 +71,7 @@ jobs:
         run: |
           mkdir -p release
           for dir in binaries/*/; do
-            cp "$dir"* release/ 2>/dev/null || true
+            cp "\$dir"* release/ 2>/dev/null || true
           done
           chmod +x release/*
           ls -la release/
@@ -82,4 +82,4 @@ jobs:
           generate_release_notes: true
           files: release/*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}

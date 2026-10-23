@@ -4,9 +4,9 @@
 
 > **Instant (<2ms) native fuzzy directory navigation — for any terminal.**
 
-No more `cd ../../some/deep/nested/folder`. Press `/` and search.
+No more \`cd ../../some/deep/nested/folder\`. Press \`/\` and search.
 
-```
+\`\`\`
   Project  ~/my-project  (42 dirs)
   / src comp
   ❯ ★ src/components/ui       │ 📁 ui (main)
@@ -33,9 +33,9 @@ https://github.com/user-attachments/assets/6460e432-f732-4d4b-8324-1308ee36460c
 
 ### One command (recommended)
 
-```bash
-curl -sSL https://raw.githubusercontent.com/jeremiahseun/dongle/main/install.sh | bash
-```
+\`\`\`
+curl -sSL https://raw.githubusercontent.com/jeremiahseun/dongle/main/install.sh > install_dongle.sh && bash install_dongle.sh && rm install_dongle.sh
+\`\`\`
 
 That's it. The installer:
 - Compiles or downloads the **156 KB Native C++17 binary** — zero Python overhead, zero dependencies, `<2ms` startup
@@ -95,7 +95,7 @@ dongle scan            Scan the current directory
 dongle list            List all discovered paths
 dongle doctor          Diagnose installation issues
 dongle version         Show version
-```
+\`\`\`
 
 ---
 
