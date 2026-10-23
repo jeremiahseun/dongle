@@ -7,34 +7,22 @@
 set -euo pipefail
 
 REPO="jeremiahseun/dongle"
-INSTALL_DIR="$HOME/.local/bin"
-INIT_DIR="$HOME/.dongle"
+INSTALL_DIR="$HOME/.dongle/bin"
 
-# Detect OS & Arch
-OS="$(uname -s)"
-ARCH="$(uname -m)"
+BOLD="\033[1m"
+GREEN="\033[0;32m"
+CYAN="\033[0;36m"
+YELLOW="\033[0;33m"
+RED="\033[0;31m"
+DIM="\033[2m"
+RESET="\033[0m"
 
-case "$OS" in
-    Linux)
-        if [ "$ARCH" = "x86_64" ]; then
-            ARTIFACT="dongle-linux-x64"
-        else
-            echo "No pre-built binary for Linux $ARCH yet. Please install from source."
-        fi
-        ;;
-    Darwin)
-        if [ "$ARCH" = "x86_64" ]; then
-            ARTIFACT="dongle-darwin-x64"
-        elif [ "$ARCH" = "arm64" ]; then
-            ARTIFACT="dongle-darwin-arm64"
-        else
-            echo "No pre-built binary for Darwin $ARCH yet. Please install from source."
-        fi
-        ;;
-    *)
-        echo "Unsupported OS: $OS"
-        ;;
-esac
+log()    { echo -e "  ${CYAN}${*}${RESET}"; }
+ok()     { echo -e "  ${GREEN}✓ ${*}${RESET}"; }
+warn()   { echo -e "  ${YELLOW}⚠ ${*}${RESET}"; }
+error()  { echo -e "  ${RED}✗ ${*}${RESET}"; exit 1; }
+header() { echo -e "\n${BOLD}${*}${RESET}"; }
+dim()    { echo -e "  ${DIM}${*}${RESET}"; }
 
 header "⚡ Dongle Installer / Updater"
 echo ""

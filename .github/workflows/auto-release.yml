@@ -1,9 +1,5 @@
 name: Auto Release on Main
 
-# Triggers on every push to main (including merged PRs).
-# Reads the version from pubspec.yaml, creates a git tag for it
-# if one doesn't exist yet, then triggers the release.yml build.
-
 on:
   push:
     branches:
@@ -19,12 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # need full history to check existing tags
+          fetch-depth: 0
 
       - name: Read version from source
         id: version
         run: |
-          VERSION=$(grep -E '^version:' pubspec.yaml | head -1 | awk '{print $2}')
+          VERSION=$(grep -E '^VERSION\s*=' dongle/config.py | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "Detected version: $VERSION"
@@ -50,6 +46,3 @@ jobs:
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
           echo "Created and pushed tag $TAG"
-
-      # Pushing the tag above will automatically trigger release.yml
-      # (which fires on 'push: tags: v*'), so no further steps needed here.
